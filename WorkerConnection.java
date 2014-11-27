@@ -23,20 +23,26 @@ public class WorkerConnection extends Thread {
         this.id = id;
     }
     
-    public void writeWorker(String arg) {
-    	try {
-    		out.write(arg.getBytes());
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Worker " + id + ": closing connection.");
-    		this.closeConnection();
-    	}
+    public void writeWorker(final String arg) {
+    	// TODO change this to a worker pool?
+    	new Thread(new Runnable() {
+			@Override
+			public void run() {
+		    	try {
+		    		out.write(arg.getBytes());
+		    	} catch (IOException e) {
+		    		System.err.println("Error writing to Worker " + id + ": closing connection.");
+		    		closeConnection();
+		    	}				
+			}
+    	}).start();
     }
     
     public synchronized void closeConnection() {
+    	// TODO inform worker of closing without infinite loop on bad writes
     	stopped = true;
     	master.remove(id);
     	try {
-    		writeWorker("q"); //quit command
     		clientSocket.close();
     		in.close();
     		out.close();

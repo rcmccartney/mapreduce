@@ -73,7 +73,6 @@ public class Worker implements Runnable {
 
     /**
      * 
-     * @throws Exception
      */
     public synchronized void closeConnection() {
     	stopped = true;

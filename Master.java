@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
 
+
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
@@ -34,8 +35,18 @@ public class Master extends Thread {
         return stopped;
     }
     
+    public synchronized void writeAllWorkers(String message){
+    	Iterator<WorkerConnection> it = workerQueue.iterator();
+		while (it.hasNext())
+			it.next().writeWorker(message);
+    }
+    
     private synchronized int getJobs() {
     	return jobs;
+    }
+    
+    public Iterator<WorkerConnection> iterator() {
+    	return workerQueue.iterator();
     }
 
     public synchronized void stopServer() {
@@ -84,8 +95,11 @@ public class Master extends Thread {
 			try {
 				Socket client = this.serverSocket.accept();
 				WorkerConnection connection = new WorkerConnection(this, client, ++id_counter);
+				connection.setDaemon(true);  // this will cause exit upon user 'quit'
 				connection.start();
-				workerQueue.add(connection);
+				synchronized (this) {  // make this synchronized to prevent modification while iterating
+					workerQueue.add(connection);
+				}
 			} catch (IOException e) {
 				if(isStopped()) {
 					System.err.println("Master server stopped.") ;
@@ -136,13 +150,15 @@ public class Master extends Thread {
 					printHelp();
 				else
 					unrecognized(line[1]);
-			else if (line[0].equalsIgnoreCase("ls"))
-				for (WorkerConnection wc : workerQueue)
-					System.out.println(wc);
+			else if (line[0].equalsIgnoreCase("ls")) {
+				synchronized (this) {
+					for (WorkerConnection wc : workerQueue)
+						System.out.println(wc);
+				}
+			}
 			else if (line[0].equalsIgnoreCase("q")) {
-				String article = (getJobs()==1?"is":"are");
-				String plural = (getJobs()==1?"":"s");
-				System.out.printf("Really quit? There %s %d job%s pending%n> ", article, getJobs(), plural);
+				System.out.printf("Really quit? There %s %d job%s pending%n> ", 
+						(getJobs()==1?"is":"are"), getJobs(), (getJobs()==1?"":"s"));
 				command = in.nextLine().trim();
 				if (command.equalsIgnoreCase("y") || command.equalsIgnoreCase("yes")) 
 					stopServer();
