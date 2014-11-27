@@ -36,6 +36,7 @@ public class WorkerConnection extends Thread {
     	stopped = true;
     	master.remove(id);
     	try {
+    		writeWorker("q"); //quit command
     		clientSocket.close();
     		in.close();
     		out.close();
@@ -44,6 +45,11 @@ public class WorkerConnection extends Thread {
     
     public synchronized boolean isStopped() {
     	return stopped;
+    }
+    
+    @Override
+    public String toString() {
+    	return "Worker " + this.id + ": " + clientSocket.toString();
     }
 
     /**

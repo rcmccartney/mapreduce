@@ -1,39 +1,41 @@
 package mapreduce;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Scanner;
 
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
 	protected int port = 40001;
 	protected boolean stopped = false;
+	protected int jobs = 0;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
 	
-	public Master(String[] args)	{
+	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
 		if (args.length > 0)
 			parseArgs(args);
-		try { 
-			serverSocket = new ServerSocket(port);
-			System.out.println ("Listening on port: " + serverSocket.getLocalPort());
-		} catch(Exception e) {
-            throw new RuntimeException("Cannot open port " + port, e);
-		}
+		serverSocket = new ServerSocket(port);
 	}
 	
 	public void receive(String command, int id) {
 		// TODO Auto-generated method stub
-		
 	}
 	
     private synchronized boolean isStopped() {
         return stopped;
+    }
+    
+    private synchronized int getJobs() {
+    	return jobs;
     }
 
     public synchronized void stopServer() {
@@ -53,7 +55,7 @@ public class Master extends Thread {
 	 * 
 	 * @param args passed in on command line
 	 */
-	private void parseArgs(String args[]) {
+	protected void parseArgs(String args[]) {
 		
 		for (int i = 0; i < args.length; i ++) {	
 			if (args[i].equals("-port")) 
@@ -81,13 +83,12 @@ public class Master extends Thread {
 		while(!isStopped()) {
 			try {
 				Socket client = this.serverSocket.accept();
-				System.out.println(client.toString());
 				WorkerConnection connection = new WorkerConnection(this, client, ++id_counter);
 				connection.start();
 				workerQueue.add(connection);
 			} catch (IOException e) {
 				if(isStopped()) {
-					System.err.println("Server stopped, cannot accept Workers.") ;
+					System.err.println("Master server stopped.") ;
 					return;
 				}
 				else 
@@ -96,8 +97,93 @@ public class Master extends Thread {
 		}
         System.out.println("Master server stopped.") ;
 	}
+	
+	////////////////////////////////////////////////////////////////////////////////////
+	//  Command-line interface services 
+	////////////////////////////////////////////////////////////////////////////////////
+	/**
+	 * This is how a user interacts with the Master node of the system.  
+	 * It is run by the main thread of execution
+	 * @throws UnknownHostException 
+	 * 
+	 */
+	protected void commandLineInterface() throws UnknownHostException {
+		System.out.println("#################################################");
+		System.out.println("#\t\tMAP-REDUCE FRAMEWORK\t\t#");
+		System.out.println("#\t\t\t\t\t\t#");
+		System.out.println("# Server:"+InetAddress.getLocalHost().getHostAddress()+"\t\t\t\t#");
+		System.out.println("# Port:"+port+"\t\t\t\t\t#");	
+		System.out.println("# Type help or man to view the man pages\t#");
+		System.out.println("#\t\t\t\t\t\t#");
+		System.out.println("#################################################");
+		Scanner in = new Scanner(System.in);
+		do {
+			System.out.print("> ");
+			String command;
+			command = in.nextLine().trim();
+			String[] line = command.split("\\s+");
+			if (line[0].equalsIgnoreCase("man") || 
+					(line[0].equalsIgnoreCase("help") && line.length==1))
+				printFull();
+			else if (line[0].equalsIgnoreCase("help"))
+				if (line[1].equalsIgnoreCase("ls"))
+					printLS();
+				else if (line[1].equalsIgnoreCase("man"))
+					printMan();
+				else if (line[1].equalsIgnoreCase("q"))
+					printQ();
+				else if (line[1].equalsIgnoreCase("help"))
+					printHelp();
+				else
+					unrecognized(line[1]);
+			else if (line[0].equalsIgnoreCase("ls"))
+				for (WorkerConnection wc : workerQueue)
+					System.out.println(wc);
+			else if (line[0].equalsIgnoreCase("q")) {
+				String article = (getJobs()==1?"is":"are");
+				String plural = (getJobs()==1?"":"s");
+				System.out.printf("Really quit? There %s %d job%s pending%n> ", article, getJobs(), plural);
+				command = in.nextLine().trim();
+				if (command.equalsIgnoreCase("y") || command.equalsIgnoreCase("yes")) 
+					stopServer();
+			}
+			else 
+				unrecognized(line[0]);
+		} while (!isStopped());
+		in.close();
+	}
+	
+	protected void unrecognized(String cmd) {
+		if (cmd.length() > 0)
+			System.out.println(cmd + " is not recognized as a valid input command");
+	}
+	
+	protected void printFull() {
+		printMan();
+		printHelp();
+		printLS();
+		printQ();
+	}
+	
+	protected void printHelp() {
+		System.out.println("help <cmd>: Get further information on <cmd>");
+	}
+	
+	protected void printQ() {
+		System.out.println("q: Quit the system (y to confirm)");
+	}
+	
+	protected void printMan() {
+		System.out.println("man: Display manual");
+	}
+	
+	protected void printLS() {
+		System.out.println("ls: List the workers currently in the cluster");
+	}
 		
-   public static void main(String[] args) {
-	   new Master(args).start();
-   }
+	public static void main(String[] args) throws IOException {
+		Master m = new Master(args);
+		m.start();
+		m.commandLineInterface();  //run by main thread of execution
+	}
 }

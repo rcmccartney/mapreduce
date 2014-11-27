@@ -67,7 +67,8 @@ public class Worker implements Runnable {
     }
     
     public void receive(String command) {
-    	
+    	if (command.equals("q"))
+    		closeConnection();
     }
 
     /**
@@ -96,6 +97,11 @@ public class Worker implements Runnable {
 				this.closeConnection();
 			}
     	}
+    }
+    
+    @Override
+    public String toString() {
+    	return socket.toString();
     }
     
     /**
