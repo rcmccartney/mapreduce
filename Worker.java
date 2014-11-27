@@ -6,11 +6,11 @@ package mapreduce;
 //******************************************************************************
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
-
 
 /**
  * This class parses command-line input in order to register client as a worker in a 
@@ -21,13 +21,14 @@ import java.net.Socket;
  * 
  * @author rob mccartney
  */
-public class Worker {
+public class Worker implements Runnable {
 
-	private String hostName = ""; 
-    private int port = 40001;
-    private Socket socket;
-    private PrintWriter out;
-    private BufferedReader in;
+	protected String hostName = ""; 
+	protected int port = 40001;
+	protected Socket socket;
+	protected OutputStream out;
+	protected BufferedReader in;
+	protected boolean stopped = false;
     
     /**
      * Constructor that makes a new worker and attempts to register with a Master.
@@ -36,36 +37,64 @@ public class Worker {
      * @param args String[] from the command line
      */
     public Worker(String[] args) {
-    	
     	if (args.length > 0)  
     		parseArgs(args);
     	try {
     		if (hostName.length() == 0) 
     			hostName = InetAddress.getLocalHost().getHostAddress();
     		socket = new Socket(hostName, port);
-            out = new PrintWriter( socket.getOutputStream(), true);
-            in = new BufferedReader( new InputStreamReader( socket.getInputStream()));
-            out.println("TESTING");
-            System.out.println(in.readLine());
+            out = socket.getOutputStream();
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
 			System.out.println("Did you specify the correct hostname and port of the server?");
 			System.out.println("Please try again later.");
-			System.exit(1);
 		}
+    }
+    
+    public void writeMaster(String arg) {
+    	try {
+    		out.write(arg.getBytes());
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Master: closing connection.");
+    		this.closeConnection();
+    	}
+    }
+    
+    public synchronized boolean isStopped() {
+    	return stopped;
+    }
+    
+    public void receive(String command) {
+    	
     }
 
     /**
      * 
      * @throws Exception
      */
-    public void closeIOconections() throws Exception {
+    public synchronized void closeConnection() {
+    	stopped = true;
     	try {
+    		socket.close();
     		in.close();
     		out.close();
-    	} catch (Exception e )       {
-    		System.out.println(e.toString());
-    		System.exit(1);
+    	} catch (IOException e) {} //ignore exceptions since you are quitting
+    }
+    
+    public void run() {
+    	String command;
+    	while(!isStopped()) {
+    		try {
+    			if ( (command = in.readLine()) != null)
+    				this.receive(command);
+			} catch (IOException e) {
+				if (isStopped()) // exception is expected when the connection is first closed
+					return;
+				System.err.println("Error in socket connection to Master: closing connection");
+				this.closeConnection();
+			}
     	}
     }
     

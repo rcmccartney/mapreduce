@@ -5,11 +5,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
-	protected int port = 8080;
+	protected int port = 40001;
 	protected boolean stopped = false;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
@@ -22,8 +23,13 @@ public class Master extends Thread {
 			serverSocket = new ServerSocket(port);
 			System.out.println ("Listening on port: " + serverSocket.getLocalPort());
 		} catch(Exception e) {
-            throw new RuntimeException("Cannot open port 40001", e);
+            throw new RuntimeException("Cannot open port " + port, e);
 		}
+	}
+	
+	public void receive(String command, int id) {
+		// TODO Auto-generated method stub
+		
 	}
 	
     private synchronized boolean isStopped() {
@@ -35,9 +41,9 @@ public class Master extends Thread {
         try {
             this.serverSocket.close();
             for (WorkerConnection conn : workerQueue)
-            	conn.closeIOconnections();
+            	conn.closeConnection();
         } catch (IOException e) {
-            throw new RuntimeException("Error closing server", e);
+            throw new RuntimeException("Error closing master", e);
         }
     }
 	
@@ -60,17 +66,28 @@ public class Master extends Thread {
 		}
 	}
 	
+	public void remove(int workerID) {
+		Iterator<WorkerConnection> it = workerQueue.iterator();
+		while (it.hasNext()) {
+			WorkerConnection curr = it.next();
+			if (curr.id == workerID) {
+				it.remove();
+				break;
+			}
+		}
+	}
+	
 	public void run()	{
 		while(!isStopped()) {
 			try {
 				Socket client = this.serverSocket.accept();
 				System.out.println(client.toString());
-				WorkerConnection connection = new WorkerConnection(client, ++id_counter);
+				WorkerConnection connection = new WorkerConnection(this, client, ++id_counter);
 				connection.start();
 				workerQueue.add(connection);
 			} catch (IOException e) {
 				if(isStopped()) {
-					System.out.println("Server stopped, cannot accept Workers.") ;
+					System.err.println("Server stopped, cannot accept Workers.") ;
 					return;
 				}
 				else 

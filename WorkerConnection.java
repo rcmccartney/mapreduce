@@ -1,7 +1,8 @@
 package mapreduce;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 
@@ -9,47 +10,56 @@ public class WorkerConnection extends Thread {
 
     protected Socket clientSocket;
     protected int id;
-	protected InputStream in;
+	protected BufferedReader in;
 	protected OutputStream out;
 	protected boolean stopped = false;
+	protected Master master;
 
-    public WorkerConnection(Socket socket, int id) throws IOException {
-        this.clientSocket = socket;
+    public WorkerConnection(Master master, Socket clientSocket, int id) throws IOException {
+        this.clientSocket = clientSocket;
         out = clientSocket.getOutputStream();
-        in = clientSocket.getInputStream();
-        this.id   = id;
+        in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+        this.master = master;
+        this.id = id;
     }
     
-    /**
-     * 
-     * @throws Exception
-     */
-    public synchronized void closeIOconnections() throws IOException {
+    public void writeWorker(String arg) {
+    	try {
+    		out.write(arg.getBytes());
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Worker " + id + ": closing connection.");
+    		this.closeConnection();
+    	}
+    }
+    
+    public synchronized void closeConnection() {
     	stopped = true;
-    	in.close();
-    	out.close();
+    	master.remove(id);
+    	try {
+    		clientSocket.close();
+    		in.close();
+    		out.close();
+    	} catch (IOException e) { }  //ignore exceptions since you are closing it anyways
     }
     
     public synchronized boolean isStopped() {
     	return stopped;
     }
 
+    /**
+     * This is the loop that listens to the socket for messages from this particular Worker
+     */
     public void run() {
-    	
+    	String command;
     	while(!isStopped()) {
-			try {
-				long time = System.currentTimeMillis();
-				out.write(("HTTP/1.1 200 OK\n\nWorkerRunnable: " +
-                    this.id + " - " +
-                    time +
-                    "").getBytes());
+    		try {
+    			if ( (command = in.readLine()) != null)
+    				master.receive(command, id);
 			} catch (IOException e) {
-				if(isStopped()) {
-					System.out.println("Worker connection stopped, cannot write to worker.") ;
+				if (isStopped()) // exception is expected when the connection is first closed
 					return;
-				}
-				else 
-					throw new RuntimeException("Error accepting worker connection", e);
+				System.err.println("Error in socket connection to Worker " + id + ": removing worker from cluster");
+				this.closeConnection();
 			}
     	}
     }
