@@ -5,12 +5,18 @@ package mapreduce;
 //Unit:    Distributed Programming Group Project
 //******************************************************************************
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 /**
  * This class parses command-line input in order to register client as a worker in a 
@@ -31,6 +37,7 @@ public class Worker implements Runnable {
 	protected BufferedReader in;
 	protected boolean stopped = false;
 	protected Job currentJob;
+	protected InputStream inStream;
 	// TODO job queue & increment UDP port for different jobs
     
     /**
@@ -46,8 +53,10 @@ public class Worker implements Runnable {
     		if (hostName.length() == 0) 
     			hostName = InetAddress.getLocalHost().getHostAddress();
     		socket = new Socket(hostName, port);
+    		System.out.println("Socket info " + socket);
             out = socket.getOutputStream();
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            inStream = socket.getInputStream();
+            in = new BufferedReader(new InputStreamReader(inStream));            
             //port to talk to other workers is first message sent
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
@@ -77,8 +86,66 @@ public class Worker implements Runnable {
     	else if (line[0].equals("k"))  //return value from key notification to Master
     		//job will forward key list to a given IP & port 
     		currentJob.receiveKeyAssignment(line[1], line[2], line[3]); 
-    			
-    }
+    	else if (command.equals(other.Utils.MR_W)) {
+			try {
+				out.write( (other.Utils.MR_W_OKAY+"\n").getBytes());
+				out.flush();
+				//bufferedWriter.flush();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			//TODO : invoke in a new thread
+			receiveMRFile(); 
+			compileAndLoadMRFile().map(null);
+		}
+	}
+
+	private Mapper compileAndLoadMRFile(){
+		try
+		{	
+			//be sure to change "java.exe" to point to the one in JDK not in JRE, else the compiler ref comes back as null  
+			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
+			System.out.println(compiler);
+			int compilationResult = compiler.run(null, null, null, "MR.java");  
+			System.out.println("Compilation result " + (compilationResult == 0 ? "Success" : "Failed") ); // zero means compile success
+			Class myClass = ClassLoader.getSystemClassLoader().loadClass("MR"); // TODO: let the client sent the class name and load that here
+			return (Mapper) myClass.newInstance();
+		} catch (Exception e) {
+			System.err.println("Exception loading or compiling the File: " + e);
+			e.printStackTrace();
+			return null;
+		}
+	} 			
+    
+	private void receiveMRFile(){
+		System.out.println("Worker: receiveMRfile() called");
+		try{
+			byte[] mybytearray = new byte[1024];
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR.java"));
+			while(true){
+				int bytesRead = inStream.read(mybytearray, 0, mybytearray.length);
+				System.out.println("bytes read " + bytesRead);
+				if(bytesRead <= 0) break;
+				bos.write(mybytearray, 0, bytesRead);
+				if(bytesRead < 1024)
+					break;
+			}
+			System.out.println("MRFile received at Worker");
+			bos.close();
+			//this.closeConnection();
+
+		} catch (IOException e) {
+			e.printStackTrace();
+			/*
+			if (isStopped()) // exception is expected when the connection is first closed
+				return;
+			System.err.println("Error in socket connection to Master: closing connection");
+			this.closeConnection();
+			 */	
+		}
+	}
+    
 
     /**
      * 

@@ -1,5 +1,8 @@
 package mapreduce;
 
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -8,6 +11,7 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Scanner;
 
 public class Master extends Thread {
@@ -39,6 +43,40 @@ public class Master extends Thread {
 		while (it.hasNext())
 			it.next().writeWorker(message);
     }
+    
+	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+	public void sendMRFileToWorkers(){
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				List<WorkerConnection> copyList;
+				synchronized (workerQueue) {
+					copyList = new ArrayList<>(workerQueue);
+					System.out.println("workerQ size " + workerQueue.size());
+				}
+
+				//convert the file which was received and stored as MR.java into byteArray
+				File myFile = new File("D:\\MR.java");
+				BufferedInputStream fileInputStream;
+				byte[] byteArrOfFile = new byte[(int) myFile.length()];
+				try {
+					fileInputStream = new BufferedInputStream(new FileInputStream(myFile));
+					fileInputStream.read(byteArrOfFile, 0, byteArrOfFile.length);
+					fileInputStream.close();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+
+				for (WorkerConnection wc : workerQueue){
+					if(!wc.isStopped()){
+						wc.setFileByteArr(byteArrOfFile);
+						wc.writeWorker(other.Utils.MR_W + "\n");
+					}
+				}
+			}
+		}).start();
+	}
+
     
     private synchronized int getJobs() {
     	return jobs;
