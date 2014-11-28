@@ -25,10 +25,13 @@ public class Worker implements Runnable {
 
 	protected String hostName = ""; 
 	protected int port = 40001;
+	protected int UDPport = 40002;
 	protected Socket socket;
 	protected OutputStream out;
 	protected BufferedReader in;
 	protected boolean stopped = false;
+	protected Job currentJob;
+	// TODO job queue & increment UDP port for different jobs
     
     /**
      * Constructor that makes a new worker and attempts to register with a Master.
@@ -45,6 +48,7 @@ public class Worker implements Runnable {
     		socket = new Socket(hostName, port);
             out = socket.getOutputStream();
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            //port to talk to other workers is first message sent
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
@@ -67,8 +71,13 @@ public class Worker implements Runnable {
     }
     
     public void receive(String command) {
-    	if (command.equals("q"))
+    	String[] line = command.split("\\s+");
+    	if (line[0].equals("q"))  //quit command
     		closeConnection();
+    	else if (line[0].equals("k"))  //return value from key notification to Master
+    		//job will forward key list to a given IP & port 
+    		currentJob.receiveKeyAssignment(line[1], line[2], line[3]); 
+    			
     }
 
     /**
@@ -77,6 +86,7 @@ public class Worker implements Runnable {
     public synchronized void closeConnection() {
     	stopped = true;
     	try {
+    		currentJob.stopExecution();
     		socket.close();
     		in.close();
     		out.close();
@@ -117,7 +127,7 @@ public class Worker implements Runnable {
 			else if (args[i].equals("-host")) 
 				hostName = args[++i];
 			else {
-				System.out.println("Correct usage: java Worker [-host <hostName>] [-p <portnumber>]");
+				System.out.println("Correct usage: java Worker [-host <hostName>] [-p <portnumber>] [");
 				System.out.println("\t-host: override localhost to set the host to <hostName>.");
 				System.out.println("\t-port: override default port 40001 to <port>.  "
 						+ "\n\t<host> and <port> must match the Master Server's.");

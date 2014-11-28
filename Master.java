@@ -10,7 +10,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
 
-
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;

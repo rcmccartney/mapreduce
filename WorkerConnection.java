@@ -5,27 +5,30 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class WorkerConnection extends Thread {
 
     protected Socket clientSocket;
-    protected int id;
+    protected final int id;
 	protected BufferedReader in;
 	protected OutputStream out;
 	protected boolean stopped = false;
 	protected Master master;
+	protected ExecutorService outQueue;
 
     public WorkerConnection(Master master, Socket clientSocket, int id) throws IOException {
         this.clientSocket = clientSocket;
         out = clientSocket.getOutputStream();
         in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+		outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
     }
     
     public void writeWorker(final String arg) {
-    	// TODO change this to a worker pool?
-    	new Thread(new Runnable() {
+    	outQueue.execute(new Runnable() {
 			@Override
 			public void run() {
 		    	try {
@@ -35,15 +38,19 @@ public class WorkerConnection extends Thread {
 		    		closeConnection();
 		    	}				
 			}
-    	}).start();
+    	});
     }
     
     public synchronized void closeConnection() {
-    	// TODO inform worker of closing without infinite loop on bad writes
+
     	stopped = true;
     	master.remove(id);
     	try {
-    		clientSocket.close();
+    		outQueue.shutdown();
+    		if (!clientSocket.isClosed()) {
+    			out.write("q".getBytes());
+    			clientSocket.close();
+    		}
     		in.close();
     		out.close();
     	} catch (IOException e) { }  //ignore exceptions since you are closing it anyways
