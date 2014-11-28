@@ -3,7 +3,7 @@ package mapreduce;
 import java.io.File;
 import java.util.List;
 
-public interface Mapper<key extends Comparable<?>, value> {
+public interface Mapper<key, value> {
 	
 	public void reduce(key k, List<value> listOfValues);
 

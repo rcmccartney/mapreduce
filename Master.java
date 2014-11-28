@@ -54,7 +54,6 @@ public class Master extends Thread {
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
 	public void sendMRFileToWorkers(){
 		new Thread(new Runnable() {
-			@Override
 			public void run() {
 				List<WorkerConnection> copyList;
 				synchronized (workerQueue) {
@@ -74,7 +73,7 @@ public class Master extends Thread {
 					e.printStackTrace();
 				}
 
-				for (WorkerConnection wc : workerQueue){
+				for (WorkerConnection wc : copyList) {
 					if(!wc.isStopped()){
 						wc.setFileByteArr(byteArrOfFile);
 						wc.writeWorker(other.Utils.MR_W + "\n");
@@ -88,7 +87,6 @@ public class Master extends Thread {
 	public void sendMRFileToWorkers(final byte[] file){
 		// use a new thread to allow the GUI to appear reactive
 		new Thread(new Runnable() {
-			@Override
 			public void run() {
 				synchronized (workerQueue) {
 					for (WorkerConnection wc : workerQueue) {
