@@ -1,13 +1,20 @@
 package mapreduce;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -76,7 +83,25 @@ public class Master extends Thread {
 			}
 		}).start();
 	}
-
+	
+	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+	public void sendMRFileToWorkers(final byte[] file){
+		// use a new thread to allow the GUI to appear reactive
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				synchronized (workerQueue) {
+					for (WorkerConnection wc : workerQueue) {
+						if(!wc.isStopped()){
+							wc.setFileByteArr(file);
+							//notify client of pending MR transmission
+							wc.writeWorker(other.Utils.MR_W + "\n");
+						}
+					}
+				}
+			}
+		}).start();
+	}
     
     private synchronized int getJobs() {
     	return jobs;
@@ -124,6 +149,16 @@ public class Master extends Thread {
 				it.remove();
 				break;
 			}
+		}
+	}
+	
+	public void loadFile(String filePath) {
+		try {
+			Path path = Paths.get(filePath);
+			byte[] data = Files.readAllBytes(path);
+			sendMRFileToWorkers(data);
+		} catch (IOException e) {
+			System.err.println("Error reading MR file");
 		}
 	}
 	
@@ -185,6 +220,8 @@ public class Master extends Thread {
 					printQ();
 				else if (line[1].equalsIgnoreCase("help"))
 					printHelp();
+				else if (line[1].equalsIgnoreCase("ld"))
+					printLD();
 				else
 					unrecognized(line[1]);
 			else if (line[0].equalsIgnoreCase("ls")) {
@@ -199,6 +236,16 @@ public class Master extends Thread {
 				command = in.nextLine().trim();
 				if (command.equalsIgnoreCase("y") || command.equalsIgnoreCase("yes")) 
 					stopServer();
+			}
+			else if (line[0].equalsIgnoreCase("ld")) {
+				if (line.length == 2) {
+					loadFile(line[1]);
+				}
+				else {
+					System.out.printf("Enter filename > ");
+					command = in.nextLine().trim();
+					loadFile(command);
+				}
 			}
 			else 
 				unrecognized(line[0]);
@@ -215,6 +262,7 @@ public class Master extends Thread {
 		printMan();
 		printHelp();
 		printLS();
+		printLD();
 		printQ();
 	}
 	
@@ -232,6 +280,10 @@ public class Master extends Thread {
 	
 	protected void printLS() {
 		System.out.println("ls: List the workers currently in the cluster");
+	}
+	
+	protected void printLD() {
+		System.out.println("ld [filename]: Load the map-reduce job");
 	}
 		
 	public static void main(String[] args) throws IOException {

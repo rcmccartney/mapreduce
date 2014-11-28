@@ -23,7 +23,7 @@ public class WorkerConnection extends Thread {
 	protected InputStream inStream;
 	private byte[] byteArrOfMRFile;
 
-	public void setFileByteArr(byte[] bArr){
+	public void setFileByteArr(byte[] bArr) {
 		byteArrOfMRFile = bArr;
 	}
 
@@ -39,10 +39,24 @@ public class WorkerConnection extends Thread {
     
     public void writeWorker(final String arg) {
     	outQueue.execute(new Runnable() {
-			@Override
 			public void run() {
 		    	try {
 		    		out.write(arg.getBytes());
+		    		out.flush();
+		    	} catch (IOException e) {
+		    		System.err.println("Error writing to Worker " + id + ": closing connection.");
+		    		closeConnection();
+		    	}				
+			}
+    	});
+    }
+    
+    public void writeWorker(final byte[] arg) {
+    	outQueue.execute(new Runnable() {
+			public void run() {
+		    	try {
+		    		out.write(arg);
+		    		out.flush();
 		    	} catch (IOException e) {
 		    		System.err.println("Error writing to Worker " + id + ": closing connection.");
 		    		closeConnection();
@@ -52,13 +66,14 @@ public class WorkerConnection extends Thread {
     }
     
     public synchronized void closeConnection() {
-
     	stopped = true;
     	master.remove(id);
     	try {
     		outQueue.shutdown();
     		if (!clientSocket.isClosed()) {
-    			out.write("q".getBytes());
+    			// don't use writeWorker since that will call close recursively
+    			out.write("q".getBytes()); 
+    			out.flush();
     			clientSocket.close();
     		}
     		in.close();
@@ -76,29 +91,17 @@ public class WorkerConnection extends Thread {
     }
 
 	private void receive(String command){
-		switch(command){
-		case other.Utils.MR_C:
-			try {
-				out.write((other.Utils.MR_C_OKAY+"\n").getBytes()); out.flush();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+		switch(command) {
+		case other.Utils.MR_C:	
+			writeWorker(other.Utils.MR_C_OKAY+"\n");
 			receiveFileFromClient();
 			this.closeConnection();
 			master.sendMRFileToWorkers();
 			System.out.println("finished sending and loading MR job to workers");
 			break;
-
+			
 		case other.Utils.MR_W_OKAY:
-			try {
-				//TODO: handle in seperate thread
-				out.write(byteArrOfMRFile); //write the current bytearray file for the connection
-				out.flush();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			writeWorker(byteArrOfMRFile); //write the current bytearray file for the connection
 			break;
 
 		default:
@@ -116,7 +119,6 @@ public class WorkerConnection extends Thread {
     		try {
     			if ( (command = in.readLine()) != null)
     				receive(command);
-    				//master.receive(command, id);
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
 					return;
@@ -130,43 +132,18 @@ public class WorkerConnection extends Thread {
 		System.out.println("WorkerConnection: receiveFile() called");
 		try{
 			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("D:\\MR.java"));
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR_tmp.java"));
 			while(true){
 				int bytesRead = inStream.read(mybytearray, 0, mybytearray.length);
 				System.out.println("bytes read " + bytesRead);
-				if(bytesRead <= 0) break;
+				if (bytesRead <= 0) break;
 				bos.write(mybytearray, 0, bytesRead);
-				if(bytesRead < 1024)
-					break;
+				if (bytesRead < 1024) break;
 			}
 			bos.close();
-			//this.closeConnection();
-
 		} catch (IOException e) {
 			System.out.println("Exception in WorkerConnection: receiveFile() " + e);
-			e.printStackTrace();
-
-			/*
-			if (isStopped()) // exception is expected when the connection is first closed
-				return;
-			System.err.println("Error in socket connection to Worker " + id + ": removing worker from cluster");
-			this.closeConnection();
-			 */
+			System.out.println("Exception in WorkerConnection: receiveFile() " + e);
 		}
 	}
-
-	/*public void sendMRFileCommand(final byte[] byteArrOfFile){
-		try {
-			System.out.println("WorkerConnection: sendMRFile() called");
-			this.byteArrOfMRFile = byteArrOfFile;
-			out.write("MR_W\n".getBytes());
-			System.out.println("MR_W sent to " + clientSocket);
-			out.flush();
-			//System.out.println(in.readLine() + " received from Worker "+ id); // Sends back MR_OKAY
-			//out.write(byteArrOfFile);
-			//out.flush();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}				
-	}*/
 }
