@@ -1,13 +1,6 @@
 package mapreduce;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -18,7 +11,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Scanner;
 
 public class Master extends Thread {
@@ -37,10 +29,6 @@ public class Master extends Thread {
 		serverSocket = new ServerSocket(port);
 	}
 	
-	public void receive(String command, int id) {
-		// TODO Auto-generated method stub
-	}
-	
     private synchronized boolean isStopped() {
         return stopped;
     }
@@ -52,61 +40,44 @@ public class Master extends Thread {
     }
     
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
-	public void sendMRFileToWorkers(){
-		new Thread(new Runnable() {
-			public void run() {
-				List<WorkerConnection> copyList;
-				synchronized (workerQueue) {
-					copyList = new ArrayList<>(workerQueue);
-					System.out.println("workerQ size " + workerQueue.size());
-				}
-
-				//convert the file which was received and stored as MR.java into byteArray
-				File myFile = new File("D:\\MR.java");
-				BufferedInputStream fileInputStream;
-				byte[] byteArrOfFile = new byte[(int) myFile.length()];
-				try {
-					fileInputStream = new BufferedInputStream(new FileInputStream(myFile));
-					fileInputStream.read(byteArrOfFile, 0, byteArrOfFile.length);
-					fileInputStream.close();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-
-				for (WorkerConnection wc : copyList) {
-					if(!wc.isStopped()){
-						wc.setFileByteArr(byteArrOfFile);
-						wc.writeWorker(other.Utils.MR_W + "\n");
-					}
-				}
-			}
-		}).start();
+	public synchronized void sendMRFileToWorkers(){
+		//convert the file which was received and stored as MR.java into byteArray
+		// TODO changed file location to be relative - verify works
+		byte[] byteArrOfFile = null;
+		try {
+			Path myFile = Paths.get("MR_tmp.java");
+			byteArrOfFile = Files.readAllBytes(myFile);
+		} catch (IOException e) {
+			System.err.println("Error reading MR file in Master node");
+			return;
+		}
+		for (WorkerConnection wc : workerQueue)
+			if(!wc.isStopped())
+				wc.sendFile(byteArrOfFile);
 	}
 	
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
-	public void sendMRFileToWorkers(final byte[] file){
+	public void sendMRFileToWorkers(final String filePath) {
 		// use a new thread to allow the GUI to appear reactive
 		new Thread(new Runnable() {
 			public void run() {
-				synchronized (workerQueue) {
-					for (WorkerConnection wc : workerQueue) {
-						if(!wc.isStopped()){
-							wc.setFileByteArr(file);
-							//notify client of pending MR transmission
-							wc.writeWorker(other.Utils.MR_W + "\n");
-						}
-					}
+				byte[] data;
+				try {
+					Path path = Paths.get(filePath);
+					data = Files.readAllBytes(path);
+				} catch (IOException e) {
+					System.err.println("Error reading MR file in Master node");
+					return;
 				}
+				for (WorkerConnection wc : workerQueue)
+					if (!wc.isStopped())
+						wc.sendFile(data);
 			}
 		}).start();
 	}
     
     private synchronized int getJobs() {
     	return jobs;
-    }
-    
-    public Iterator<WorkerConnection> iterator() {
-    	return workerQueue.iterator();
     }
 
     public synchronized void stopServer() {
@@ -147,16 +118,6 @@ public class Master extends Thread {
 				it.remove();
 				break;
 			}
-		}
-	}
-	
-	public void loadFile(String filePath) {
-		try {
-			Path path = Paths.get(filePath);
-			byte[] data = Files.readAllBytes(path);
-			sendMRFileToWorkers(data);
-		} catch (IOException e) {
-			System.err.println("Error reading MR file");
 		}
 	}
 	
@@ -236,13 +197,13 @@ public class Master extends Thread {
 					stopServer();
 			}
 			else if (line[0].equalsIgnoreCase("ld")) {
-				if (line.length == 2) {
-					loadFile(line[1]);
+				if (line.length > 1) {
+					sendMRFileToWorkers(line[1]);
 				}
 				else {
-					System.out.printf("Enter filename > ");
+					System.out.printf("Enter filename:%n> ");
 					command = in.nextLine().trim();
-					loadFile(command);
+					sendMRFileToWorkers(command);
 				}
 			}
 			else 

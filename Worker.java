@@ -6,17 +6,17 @@ package mapreduce;
 //******************************************************************************
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+
+import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
 
 /**
  * This class parses command-line input in order to register client as a worker in a 
@@ -34,10 +34,9 @@ public class Worker implements Runnable {
 	protected int UDPport = 40002;
 	protected Socket socket;
 	protected OutputStream out;
-	protected BufferedReader in;
+	protected InputStream in;
 	protected boolean stopped = false;
-	protected Job currentJob;
-	protected InputStream inStream;
+	protected Job<?, ?> currentJob;
 	// TODO job queue & increment UDP port for different jobs
     
     /**
@@ -53,10 +52,9 @@ public class Worker implements Runnable {
     		if (hostName.length() == 0) 
     			hostName = InetAddress.getLocalHost().getHostAddress();
     		socket = new Socket(hostName, port);
-    		System.out.println("Socket info " + socket);
+    		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
-            inStream = socket.getInputStream();
-            in = new BufferedReader(new InputStreamReader(inStream));            
+            in = socket.getInputStream();
             //port to talk to other workers is first message sent
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
@@ -69,102 +67,108 @@ public class Worker implements Runnable {
     public void writeMaster(String arg) {
     	try {
     		out.write(arg.getBytes());
+    		out.flush();
     	} catch (IOException e) {
     		System.err.println("Error writing to Master: closing connection.");
     		this.closeConnection();
     	}
     }
     
+    public void writeMaster(byte... arg) {
+    	try {
+    		out.write(arg);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Master: closing connection.");
+    		this.closeConnection();
+    	}
+    }
+
     public synchronized boolean isStopped() {
     	return stopped;
     }
     
-    public void receive(String command) {
-    	String[] line = command.split("\\s+");
-    	if (line[0].equals("q"))  //quit command
-    		closeConnection();
-    	else if (line[0].equals("k"))  //return value from key notification to Master
-    		//job will forward key list to a given IP & port 
-    		currentJob.receiveKeyAssignment(line[1], line[2], line[3]); 
-    	else if (command.equals(other.Utils.MR_W)) {
-			try {
-				out.write( (other.Utils.MR_W_OKAY+"\n").getBytes());
-				out.flush();
-				//bufferedWriter.flush();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			//TODO : invoke in a new thread
-			receiveMRFile(); 
-			compileAndLoadMRFile().map(null);
-		}
-	}
-
-	private Mapper compileAndLoadMRFile(){
-		try
-		{	
+	// TODO change this to already compiled classes sent over byte stream
+	private Mapper<?, ?> compileAndLoadMRFile(){
+		try {	
 			//be sure to change "java.exe" to point to the one in JDK not in JRE, else the compiler ref comes back as null  
 			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
-			System.out.println(compiler);
+			if (compiler == null)
+				throw new CompilerException("Error: no compiler set for MR file");
 			int compilationResult = compiler.run(null, null, null, "MR.java");  
-			System.out.println("Compilation result " + (compilationResult == 0 ? "Success" : "Failed") ); // zero means compile success
-			Class myClass = ClassLoader.getSystemClassLoader().loadClass("MR"); // TODO: let the client sent the class name and load that here
-			return (Mapper) myClass.newInstance();
+			System.out.println("Compilation " + (compilationResult==0? "successful" : "failed") ); // zero means compile success
+			// TODO: let the client sent the class name and load that here
+			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass("MR"); 
+			return (Mapper<?, ?>) myClass.newInstance();
 		} catch (Exception e) {
 			System.err.println("Exception loading or compiling the File: " + e);
-			e.printStackTrace();
 			return null;
 		}
 	} 			
     
 	private void receiveMRFile(){
-		System.out.println("Worker: receiveMRfile() called");
+		System.out.print("Worker received new MR job: ");
 		try{
 			byte[] mybytearray = new byte[1024];
+			// TODO NOT cool that MR.java is hard-coded
 			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR.java"));
-			while(true){
-				int bytesRead = inStream.read(mybytearray, 0, mybytearray.length);
-				System.out.println("bytes read " + bytesRead);
-				if(bytesRead <= 0) break;
+			int totalCount = 0;
+			while(true) {
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				totalCount += bytesRead;
+				if (bytesRead <= 0) break;
 				bos.write(mybytearray, 0, bytesRead);
-				if(bytesRead < 1024)
-					break;
+				if (bytesRead < 1024) break;
 			}
-			System.out.println("MRFile received at Worker");
+			System.out.printf("%d bytes downloaded%n", totalCount);
 			bos.close();
-			//this.closeConnection();
-
 		} catch (IOException e) {
-			e.printStackTrace();
-			/*
-			if (isStopped()) // exception is expected when the connection is first closed
-				return;
-			System.err.println("Error in socket connection to Master: closing connection");
-			this.closeConnection();
-			 */	
+    		System.err.println("Error receiving MR file from Master: closing connection.");
+    		this.closeConnection();
 		}
 	}
     
+    public String toString() {
+    	return socket.toString();
+    }
 
-    /**
-     * 
-     */
     public synchronized void closeConnection() {
     	stopped = true;
     	try {
-    		currentJob.stopExecution();
+    		if (currentJob != null) 
+    			currentJob.stopExecution();
     		socket.close();
     		in.close();
     		out.close();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
     
+    public void receive(int command) {
+
+		switch(command) {
+		case mapreduce.Utils.MR_QUIT:  //quit command
+    		closeConnection();
+    		break;
+		case mapreduce.Utils.MR_MASTER_KEY:	
+			currentJob.receiveKeyAssignment();
+			break;
+		case mapreduce.Utils.MR_W:
+			writeMaster(mapreduce.Utils.MR_W_OKAY);
+			receiveMRFile(); 
+			// TODO need to create a new Job here with this Mapper that can use the Generics properly!!
+			new Job<>(this, compileAndLoadMRFile(), "here", "there");
+			break;
+		default:
+			System.err.println("Unrecognized command: " + command);
+			break;
+		}
+    }
+    
     public void run() {
-    	String command;
+    	int command;
     	while(!isStopped()) {
     		try {
-    			if ( (command = in.readLine()) != null)
+    			if ((command = in.read()) != 0)
     				this.receive(command);
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
@@ -173,11 +177,6 @@ public class Worker implements Runnable {
 				this.closeConnection();
 			}
     	}
-    }
-    
-    @Override
-    public String toString() {
-    	return socket.toString();
     }
     
     /**

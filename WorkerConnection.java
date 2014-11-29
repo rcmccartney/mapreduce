@@ -1,11 +1,9 @@
 package mapreduce;
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
@@ -15,23 +13,17 @@ public class WorkerConnection extends Thread {
 
     protected Socket clientSocket;
     protected final int id;
-	protected BufferedReader in;
+	protected InputStream in;
 	protected OutputStream out;
 	protected boolean stopped = false;
 	protected Master master;
 	protected ExecutorService outQueue;
-	protected InputStream inStream;
 	private byte[] byteArrOfMRFile;
-
-	public void setFileByteArr(byte[] bArr) {
-		byteArrOfMRFile = bArr;
-	}
 
     public WorkerConnection(Master master, Socket clientSocket, int id) throws IOException {
         this.clientSocket = clientSocket;
         out = clientSocket.getOutputStream();
-        inStream = clientSocket.getInputStream();
-        in = new BufferedReader(new InputStreamReader(inStream));
+        in = clientSocket.getInputStream();
         outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
@@ -51,7 +43,7 @@ public class WorkerConnection extends Thread {
     	});
     }
     
-    public void writeWorker(final byte[] arg) {
+    public void writeWorker(final byte... arg) {
     	outQueue.execute(new Runnable() {
 			public void run() {
 		    	try {
@@ -72,7 +64,7 @@ public class WorkerConnection extends Thread {
     		outQueue.shutdown();
     		if (!clientSocket.isClosed()) {
     			// don't use writeWorker since that will call close recursively
-    			out.write("q".getBytes()); 
+    			out.write(mapreduce.Utils.MR_QUIT); 
     			out.flush();
     			clientSocket.close();
     		}
@@ -85,22 +77,29 @@ public class WorkerConnection extends Thread {
     	return stopped;
     }
     
-    @Override
     public String toString() {
     	return "Worker " + this.id + ": " + clientSocket.toString();
     }
+    
+	public void sendFile(byte[] bArr) {
+		byteArrOfMRFile = bArr;
+		//notify client of pending MR transmission
+		writeWorker(mapreduce.Utils.MR_W);
+	}
 
-	private void receive(String command){
+	private void receive(int command){
+		
 		switch(command) {
-		case other.Utils.MR_C:	
-			writeWorker(other.Utils.MR_C_OKAY+"\n");
+		//this workerconnection is only used for a client to send a MR job to the Master
+		case mapreduce.Utils.MR_C:	
+			writeWorker(mapreduce.Utils.MR_C_OKAY);
 			receiveFileFromClient();
-			this.closeConnection();
+			closeConnection();
 			master.sendMRFileToWorkers();
 			System.out.println("finished sending and loading MR job to workers");
 			break;
 			
-		case other.Utils.MR_W_OKAY:
+		case mapreduce.Utils.MR_W_OKAY:
 			writeWorker(byteArrOfMRFile); //write the current bytearray file for the connection
 			break;
 
@@ -114,10 +113,10 @@ public class WorkerConnection extends Thread {
      * This is the loop that listens to the socket for messages from this particular Worker
      */
     public void run() {
-    	String command;
+    	int command;
     	while(!isStopped()) {
     		try {
-    			if ( (command = in.readLine()) != null)
+    			if ( (command = in.read()) != 0)
     				receive(command);
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
@@ -134,7 +133,7 @@ public class WorkerConnection extends Thread {
 			byte[] mybytearray = new byte[1024];
 			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR_tmp.java"));
 			while(true){
-				int bytesRead = inStream.read(mybytearray, 0, mybytearray.length);
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
 				System.out.println("bytes read " + bytesRead);
 				if (bytesRead <= 0) break;
 				bos.write(mybytearray, 0, bytesRead);
@@ -142,7 +141,6 @@ public class WorkerConnection extends Thread {
 			}
 			bos.close();
 		} catch (IOException e) {
-			System.out.println("Exception in WorkerConnection: receiveFile() " + e);
 			System.out.println("Exception in WorkerConnection: receiveFile() " + e);
 		}
 	}

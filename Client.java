@@ -1,43 +1,39 @@
 package mapreduce;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
-public class Client {
-	Socket socket; 
+public class Client extends Worker {
 
-	public void sendFile(String filePath) throws IOException{
-		socket = new Socket("127.0.0.1", 40001);
-		OutputStream outStream = socket.getOutputStream();
-		InputStream inStream = socket.getInputStream();
-
-		//PrintWriter printWriter = new PrintWriter(outStream,true);
-		outStream.write("MR_C\n".getBytes());
-		outStream.flush();
-
-		BufferedReader br = new BufferedReader(new InputStreamReader(inStream));
-		System.out.println(br.readLine() + " received from Master"); //reads a "MR_C_OKAY" back from Master on the worker connection
-
-		File myFile = new File(filePath);
-		byte[] mybytearray = new byte[(int) myFile.length()];
-		BufferedInputStream fileInputStream = new BufferedInputStream(new FileInputStream(myFile));
-		fileInputStream.read(mybytearray, 0, mybytearray.length);
-		fileInputStream.close();
-
-		outStream.write(mybytearray);
-		outStream.flush();
-
-		socket.close();
+	public Client(String[] args) {
+		super(args);
 	}
 
-	public static void main(String[] args) throws IOException{
-		new Client().sendFile("C:\\Users\\Kumar\\Desktop\\MR.java"); //send a file from Desktop to the Master
+	protected byte[] filedata;
+	
+	public void sendFile(String filePath) {
+		try {
+			Path file = Paths.get(filePath);
+			filedata = Files.readAllBytes(file);
+			super.writeMaster(mapreduce.Utils.MR_C);
+		} catch (IOException e) {
+			System.out.println("Error loading MR file");
+			this.closeConnection();
+		}
+	}
+		
+	@Override
+    public void receive(int command) {
+    	if (command == Utils.MR_C_OKAY) {
+    		super.writeMaster(filedata);
+			System.out.println("Java file uploaded to Master server.");
+    		this.closeConnection();
+		}
+    }
+
+	public static void main(String[] args) {
+		new Client(args).sendFile("C:\\Users\\mccar_000\\Desktop\\MR.java"); //send a file from Desktop to the Master
 	}
 }
