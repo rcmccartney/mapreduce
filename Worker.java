@@ -30,8 +30,7 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
 public class Worker implements Runnable {
 
 	protected String hostName = ""; 
-	protected int port = 40001;
-	protected int UDPport = 40002;
+	protected int port = Utils.DEF_MASTER_PORT;
 	protected Socket socket;
 	protected OutputStream out;
 	protected InputStream in;

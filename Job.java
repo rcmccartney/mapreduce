@@ -19,7 +19,7 @@ public class Job<K, V> {
 		this.worker = worker;
 		this.mr = mr;
 		this.mr.setJob(this);
-		exec = Executors.newWorkStealingPool();
+		exec = Executors.newCachedThreadPool();
 		files = strings;
 		output = new HashMap<>();
 		begin();

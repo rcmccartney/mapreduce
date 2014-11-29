@@ -17,19 +17,19 @@ public class Client extends Worker {
 		try {
 			Path file = Paths.get(filePath);
 			filedata = Files.readAllBytes(file);
-			super.writeMaster(mapreduce.Utils.MR_C);
+			writeMaster(mapreduce.Utils.MR_C);
 		} catch (IOException e) {
 			System.out.println("Error loading MR file");
-			this.closeConnection();
+			closeConnection();
 		}
 	}
 		
 	@Override
     public void receive(int command) {
     	if (command == Utils.MR_C_OKAY) {
-    		super.writeMaster(filedata);
+    		writeMaster(filedata);
 			System.out.println("Java file uploaded to Master server.");
-    		this.closeConnection();
+    		closeConnection();
 		}
     }
 

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
@@ -16,7 +17,7 @@ import java.util.Scanner;
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
-	protected int port = 40001;
+	protected int port = Utils.DEF_MASTER_PORT;
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
@@ -34,14 +35,13 @@ public class Master extends Thread {
     }
     
     public synchronized void writeAllWorkers(String message){
-    	Iterator<WorkerConnection> it = workerQueue.iterator();
-		while (it.hasNext())
-			it.next().writeWorker(message);
+    	for (WorkerConnection wc : workerQueue)
+    		wc.writeWorker(message);
     }
     
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+    // this method is for sending file received by a client
 	public synchronized void sendMRFileToWorkers(){
-		//convert the file which was received and stored as MR.java into byteArray
 		// TODO changed file location to be relative - verify works
 		byte[] byteArrOfFile = null;
 		try {
@@ -206,6 +206,15 @@ public class Master extends Thread {
 					sendMRFileToWorkers(command);
 				}
 			}
+			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
+				try {
+					new WorkerP2P<String, String>(40013, null).send("Kumar", 
+							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.DEF_WP2P_PORT);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+
 			else 
 				unrecognized(line[0]);
 		} while (!isStopped());
