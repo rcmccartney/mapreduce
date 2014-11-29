@@ -41,7 +41,7 @@ public class Master extends Thread {
     
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
     // this method is for sending file received by a client
-	public synchronized void sendMRFileToWorkers(){
+	public void sendMRFileToWorkers(){
 		// TODO changed file location to be relative - verify works
 		byte[] byteArrOfFile = null;
 		try {
@@ -51,9 +51,11 @@ public class Master extends Thread {
 			System.err.println("Error reading MR file in Master node");
 			return;
 		}
-		for (WorkerConnection wc : workerQueue)
-			if(!wc.isStopped())
-				wc.sendFile(byteArrOfFile);
+		synchronized (this) {
+			for (WorkerConnection wc : workerQueue)
+				if(!wc.isStopped())
+					wc.sendFile(byteArrOfFile);
+		}
 	}
 	
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
@@ -69,9 +71,11 @@ public class Master extends Thread {
 					System.err.println("Error reading MR file in Master node");
 					return;
 				}
-				for (WorkerConnection wc : workerQueue)
-					if (!wc.isStopped())
-						wc.sendFile(data);
+				synchronized (Master.this) {   // prevent concurrent modification
+					for (WorkerConnection wc : workerQueue)
+						if (!wc.isStopped())
+							wc.sendFile(data);
+				}
 			}
 		}).start();
 	}
