@@ -18,6 +18,7 @@ public class Job<K, V> {
 	public Job(Worker worker, Mapper<K, V> mr, String...strings) {
 		this.worker = worker;
 		this.mr = mr;
+		this.mr.setJob(this);
 		exec = Executors.newWorkStealingPool();
 		files = strings;
 		output = new HashMap<>();
@@ -36,7 +37,7 @@ public class Job<K, V> {
 		// first notify Master of the keys you have at this node, and their sizes
 		for(K key: output.keySet()) {
 			//worker.writeMaster("k" + " " + key + " " + output.get(key).size());
-			System.out.println("HAVE THESE KEYS: " + key);
+			System.out.println("HAVE THESE KEYS: " + key + " Value: " + output.get(key));
 		}
 	}
 	
