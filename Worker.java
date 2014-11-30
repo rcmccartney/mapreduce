@@ -34,9 +34,10 @@ public class Worker implements Runnable {
 	protected Socket socket;
 	protected OutputStream out;
 	protected InputStream in;
+	//stopped is used by multiple threads, must be synchronized
 	protected boolean stopped = false;
 	protected Job<?, ?> currentJob;
-	// TODO job queue & increment UDP port for different jobs
+	// TODO job queue 
     
     /**
      * Constructor that makes a new worker and attempts to register with a Master.
@@ -54,7 +55,6 @@ public class Worker implements Runnable {
     		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
-            //port to talk to other workers is first message sent
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
@@ -87,16 +87,19 @@ public class Worker implements Runnable {
     	return stopped;
     }
     
-	// TODO change this to already compiled classes sent over byte stream
+	// TODO add it so User can send already compiled classes over byte stream
 	private Mapper<?, ?> compileAndLoadMRFile(){
+		
 		try {	
-			//be sure to change "java.exe" to point to the one in JDK not in JRE, else the compiler ref comes back as null  
 			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
+			//be sure to change "java.exe" to point to the one in JDK not in JRE, else the compiler ref comes back as null 
 			if (compiler == null)
 				throw new CompilerException("Error: no compiler set for MR file");
+			// zero means compile success
+			// TODO make it not hardcoded as MR.java
 			int compilationResult = compiler.run(null, null, null, "MR.java");  
-			System.out.println("Compilation " + (compilationResult==0? "successful" : "failed") ); // zero means compile success
-			// TODO: let the client sent the class name and load that here
+			System.out.println("MR.java compilation " + (compilationResult==0? "successful" : "failed") ); 
+			// TODO: let the client send the class name and load that here
 			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass("MR"); 
 			return (Mapper<?, ?>) myClass.newInstance();
 		} catch (Exception e) {
@@ -109,7 +112,7 @@ public class Worker implements Runnable {
 		System.out.print("Worker received new MR job: ");
 		try{
 			byte[] mybytearray = new byte[1024];
-			// TODO NOT cool that MR.java is hard-coded
+			// TODO change that MR.java is hard-coded
 			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR.java"));
 			int totalCount = 0;
 			while(true) {
@@ -145,20 +148,28 @@ public class Worker implements Runnable {
     public void receive(int command) {
 
 		switch(command) {
-		case mapreduce.Utils.MR_QUIT:  //quit command
+		case Utils.MR_QUIT:  //quit command
     		closeConnection();
     		break;
-		case mapreduce.Utils.MR_MASTER_KEY:	
-			currentJob.receiveKeyAssignment();
+		case Utils.W2M_KEY_OKAY:
+			currentJob.sendKeysToMaster();
 			break;
-		case mapreduce.Utils.MR_W:
-			writeMaster(mapreduce.Utils.MR_W_OKAY);
+		case Utils.M2W_KEYASSIGN:	
+			writeMaster(mapreduce.Utils.M2W_KEYASSIGN_OKAY);
+			currentJob.receiveKeyAssignments();
+			break;
+		case Utils.M2W_UPLOAD:
+			writeMaster(Utils.M2W_UPLOAD_OKAY);
 			receiveMRFile(); 
-			// TODO need to create a new Job here with this Mapper that can use the Generics properly!!
-			new Job<>(this, compileAndLoadMRFile(), "here", "there");
+			// TODO filesystem that can take in actual file names instead of "here", "there"
+			currentJob = new Job<>(this, compileAndLoadMRFile(), "here", "there");
+			currentJob.begin();
+			break;		
+		case Utils.W2M_RESULTS_OKAY:
+			currentJob.sendResults();
 			break;
 		default:
-			System.err.println("Unrecognized command: " + command);
+			System.err.println("Unrecognized Worker command: " + command);
 			break;
 		}
     }

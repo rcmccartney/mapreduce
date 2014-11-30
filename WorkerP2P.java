@@ -48,8 +48,8 @@ public class WorkerP2P<K,V> extends Thread {
 
 				byte cmd = (byte)in.read(); //commands are one byte
 				switch(cmd){
-					case Utils.W2W_K:
-						out.write(Utils.W2W_K_OKAY); out.flush();
+					case Utils.W2W_KEY_TRANSFER:
+						out.write(Utils.W2W_KEY_TRANSFER_OKAY); out.flush();
 						Object[] objArr = Utils.gson.fromJson(br.readLine(), Object[].class);
 						K key = (K)objArr[0];
 						List<V> valList = (List<V>) objArr[1];
@@ -97,8 +97,8 @@ public class WorkerP2P<K,V> extends Thread {
 					OutputStream out = socket.getOutputStream();
 					InputStream in = socket.getInputStream();
 					
-					out.write(Utils.W2W_K); out.flush();
-					if (in.read() != Utils.W2W_K_OKAY) 
+					out.write(Utils.W2W_KEY_TRANSFER); out.flush();
+					if (in.read() != Utils.W2W_KEY_TRANSFER_OKAY) 
 						System.err.println("Invalid response from Worker peer");
 					out.write((jStr+"\n").getBytes());
 

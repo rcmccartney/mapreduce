@@ -42,11 +42,13 @@ public class Master extends Thread {
 	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
     // this method is for sending file received by a client
 	public void sendMRFileToWorkers(){
-		// TODO changed file location to be relative - verify works
+
 		byte[] byteArrOfFile = null;
 		try {
-			Path myFile = Paths.get("MR_tmp.java");
+			// MR_tmp is where the file was stored from being sent by the Client, remove when done
+			Path myFile = Paths.get(Utils.TMP_FILE);
 			byteArrOfFile = Files.readAllBytes(myFile);
+			Files.delete(myFile);
 		} catch (IOException e) {
 			System.err.println("Error reading MR file in Master node");
 			return;
@@ -58,7 +60,7 @@ public class Master extends Thread {
 		}
 	}
 	
-	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+	// TODO multiple clients trying to submit MRFiles
 	public void sendMRFileToWorkers(final String filePath) {
 		// use a new thread to allow the GUI to appear reactive
 		new Thread(new Runnable() {
@@ -114,7 +116,7 @@ public class Master extends Thread {
 		}
 	}
 	
-	public void remove(int workerID) {
+	public synchronized void remove(int workerID) {
 		Iterator<WorkerConnection> it = workerQueue.iterator();
 		while (it.hasNext()) {
 			WorkerConnection curr = it.next();
@@ -137,14 +139,14 @@ public class Master extends Thread {
 				}
 			} catch (IOException e) {
 				if(isStopped()) {
-					System.err.println("Master server stopped.") ;
+					System.err.println("Master server stopped") ;
 					return;
 				}
 				else 
 					throw new RuntimeException("Error accepting worker connection", e);
 			}
 		}
-        System.out.println("Master server stopped.") ;
+        System.out.println("Master server stopped") ;
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////
@@ -218,7 +220,6 @@ public class Master extends Thread {
 					e.printStackTrace();
 				}
 			}
-
 			else 
 				unrecognized(line[0]);
 		} while (!isStopped());

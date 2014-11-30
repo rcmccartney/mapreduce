@@ -7,17 +7,17 @@ import java.nio.file.Paths;
 
 public class Client extends Worker {
 
+	protected byte[] filedata;
+	
 	public Client(String[] args) {
 		super(args);
 	}
-
-	protected byte[] filedata;
 	
 	public void sendFile(String filePath) {
 		try {
 			Path file = Paths.get(filePath);
 			filedata = Files.readAllBytes(file);
-			writeMaster(mapreduce.Utils.MR_C);
+			writeMaster(mapreduce.Utils.C2M_UPLOAD);
 		} catch (IOException e) {
 			System.out.println("Error loading MR file");
 			closeConnection();
@@ -26,7 +26,7 @@ public class Client extends Worker {
 		
 	@Override
     public void receive(int command) {
-    	if (command == Utils.MR_C_OKAY) {
+    	if (command == Utils.C2M_UPLOAD_OKAY) {
     		writeMaster(filedata);
 			System.out.println("Java file uploaded to Master server.");
     		closeConnection();

@@ -4,25 +4,22 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class Job<K, V> {
 
-	protected ExecutorService exec;
 	protected Worker worker;
 	protected Mapper<K, V> mr;
-	protected HashMap<K, List<V>> output;
+	protected HashMap<K, List<V>> mapOutput;
+	protected HashMap<K, V> finalOut;
 	protected String[] files;
 	
 	public Job(Worker worker, Mapper<K, V> mr, String...strings) {
 		this.worker = worker;
 		this.mr = mr;
 		this.mr.setJob(this);
-		exec = Executors.newCachedThreadPool();
 		files = strings;
-		output = new HashMap<>();
-		begin();
+		mapOutput = new HashMap<>();
+		finalOut = new HashMap<>();
 	}
 	
 	public void begin() {
@@ -35,38 +32,84 @@ public class Job<K, V> {
 
 		// now the output map has been populated, so it needs to be shuffled and sorted 
 		// first notify Master of the keys you have at this node, and their sizes
-		for(K key: output.keySet()) {
+		worker.writeMaster(Utils.W2M_KEY);
+		
+		
+		// TODO this is testing code to be removed, ignores all P2P traffic
+		for(K key: mapOutput.keySet()) {
 			//worker.writeMaster("k" + " " + key + " " + output.get(key).size());
-			System.out.println("HAVE THESE KEYS: " + key + " Value: " + output.get(key));
+			System.out.println("HAVE THESE KEYS: " + key + " Value: " + mapOutput.get(key));
 		}
+		this.reduce();
+	}
+	
+	public void reduce() {
+		ArrayList<Thread> thrs = new ArrayList<>();
+		for(final K key: mapOutput.keySet()) {
+			thrs.add(new Thread(new Runnable() {
+				public void run() {
+					finalOut.put(key, mr.reduce(key, mapOutput.get(key)));
+				}
+			}));
+			thrs.get(thrs.size()-1).start();
+		}
+		// wait for all the threads to finish
+		for(Thread t: thrs){
+			try {
+				t.join();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		// TODO this is testing code to be removed,
+		for( K key : finalOut.keySet() ) {
+			System.out.println("key: " + key + " result: " + finalOut.get(key));
+		}
+		
+		//finalOut holds the results of this MR job, send it to Master
+		worker.writeMaster(Utils.W2M_RESULTS);
 	}
 	
 	public void emit(K key, V value) {
-		if (output.containsKey(key)) 
-			output.get(key).add(value);
+		if (mapOutput.containsKey(key)) 
+			mapOutput.get(key).add(value);
 		else {
 			List<V> l = new ArrayList<>();
 			l.add(value);
-			output.put(key, l);
+			mapOutput.put(key, l);
 		}
 	}
 	
 	public void emit(HashMap<K, V> tmp) {
 		if (tmp == null)
 			return;
-		
 		for(K key: tmp.keySet()) 
 			emit(key, tmp.get(key));
 	}
 	
-	public void receiveKeyAssignment() {
+	public void receiveKeyAssignments() {
 		// need key, ip address, and port from Master to fwd your values there
 		// K key = mr.parse("F");
+		// TODO
+		
+		// Then send all the P2P traffic...
+		// P2P traffic should remove values from output as it is sent and add to it as it
+		// is received,
+		
+		//then once P2P is fished call this.reduce()
+		// so output has all the key - list of Values
 		
 	}
 	
+	public void sendKeysToMaster() {
+		// TODO let master know what keys you have here
+	}
+	
+	public void sendResults() {
+		// TODO send results to Master
+	}
+	
 	public void stopExecution() {
-		exec.shutdown();
 		
 	}
 }
