@@ -12,8 +12,6 @@ public abstract class Mapper<K, V> {
 	
 	public abstract V reduce(K key, List<V> listOfValues);
 
-	public abstract K parse(String rep);
-	
 	public void emit(K key, V value) {
 		job.emit(key, value);
 	}

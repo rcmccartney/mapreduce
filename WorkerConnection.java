@@ -18,7 +18,8 @@ public class WorkerConnection extends Thread {
 	protected boolean stopped = false;
 	protected Master master;
 	protected ExecutorService outQueue;
-	private byte[] byteArrOfMRFile;
+	protected byte[] byteArrOfMRFile;
+	protected String MRFileName; 
 
     public WorkerConnection(Master master, Socket clientSocket, int id) throws IOException {
         this.clientSocket = clientSocket;
@@ -27,6 +28,21 @@ public class WorkerConnection extends Thread {
         outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
+    }
+    
+    public void writeWorker(final String arg, final byte... barg) {
+    	outQueue.execute(new Runnable() {
+			public void run() {
+				try {
+					byte[] barr = Utils.concat(arg.getBytes(), barg);
+					out.write(barr);
+					out.flush();
+				} catch (IOException e) {
+					System.err.printf("Error writing to Worker %d: closing connection%n", id);
+					closeConnection();
+				}
+			}
+    	});
     }
     
     public void writeWorker(final String arg) {
@@ -81,27 +97,23 @@ public class WorkerConnection extends Thread {
     	return "Worker " + this.id + ": " + clientSocket.toString();
     }
     
-	public void sendFile(byte[] bArr) {
-		byteArrOfMRFile = bArr;
-		//notify client of pending MR transmission and wait for response
-		writeWorker(mapreduce.Utils.M2W_UPLOAD);
-	}
-
-	private void receive(int command){
+    private void receive(int command){
 		
 		switch(command) {
 		//this workerconnection is only used for a client to send a MR job to the Master
 		// after which it is shutdown
 		case Utils.C2M_UPLOAD:	
 			writeWorker(mapreduce.Utils.C2M_UPLOAD_OKAY);
-			receiveFileFromClient();
+			String name = receiveFileFromClient();
 			closeConnection();
-			master.sendMRFileToWorkers();
-			System.err.println("...Finished sending MR job to worker nodes");
+			if (name != null) {
+				master.sendMRFileToWorkers(name, true);
+				System.err.println("...Finished sending MR job to worker nodes");
+			}
 			break;
 		// this is called when the Worker notifies a connection it is ready to receive file
 		case Utils.M2W_UPLOAD_OKAY:
-			writeWorker(byteArrOfMRFile); //write the current bytearray file for the connection
+			writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
 			break;
 		case Utils.W2M_KEY:
 			writeWorker(Utils.W2M_KEY_OKAY);
@@ -119,6 +131,41 @@ public class WorkerConnection extends Thread {
 			break;
 		}
 	} 
+    
+    public void sendFile(String name, byte[] bArr) {
+		MRFileName = name;
+		byteArrOfMRFile = bArr;
+		//notify client of pending MR transmission and wait for response
+		writeWorker(mapreduce.Utils.M2W_UPLOAD);
+	}
+    
+	private String receiveFileFromClient(){
+		System.err.println("...Receiving MR job from Client node");
+		try{
+			// the first thing sent will be the filename
+			int f;
+			String name = "";
+			while( (f = in.read()) != '\n') {
+				name += (char) f;
+			}
+			int totalBytes = 0;
+			byte[] mybytearray = new byte[1024];
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(name));
+			while (true){
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				totalBytes += bytesRead;
+				if (bytesRead <= 0) break;
+				bos.write(mybytearray, 0, bytesRead);
+				if (bytesRead < 1024) break;
+			}
+			System.err.printf("%d bytes read%n", totalBytes);
+			bos.close();
+			return name;
+		} catch (IOException e) {
+			System.err.println("Exception in WorkerConnection: receiveFile() " + e);
+			return null;
+		}
+	}
     
     private void receiveWorkerKeys() {
 		// TODO receive this workers keys and give to Master to compile
@@ -141,24 +188,4 @@ public class WorkerConnection extends Thread {
 			}
     	}
     }
-    
-	private void receiveFileFromClient(){
-		System.err.println("...Receiving MR job from Client node");
-		try{
-			int totalBytes = 0;
-			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(Utils.TMP_FILE));
-			while(true){
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				totalBytes += bytesRead;
-				if (bytesRead <= 0) break;
-				bos.write(mybytearray, 0, bytesRead);
-				if (bytesRead < 1024) break;
-			}
-			System.err.printf("%d bytes read%n", totalBytes);
-			bos.close();
-		} catch (IOException e) {
-			System.err.println("Exception in WorkerConnection: receiveFile() " + e);
-		}
-	}
 }

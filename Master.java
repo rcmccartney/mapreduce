@@ -39,47 +39,27 @@ public class Master extends Thread {
     		wc.writeWorker(message);
     }
     
-	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+	// check if this method needs to be called by multiple threads. 
+    // i.e multiple clients trying to submit MRFiles
     // this method is for sending file received by a client
-	public void sendMRFileToWorkers(){
+    // use deleteAfter if this is a temporary file sent from client to Master
+	public void sendMRFileToWorkers(String filename, boolean deleteAfter){
 
 		byte[] byteArrOfFile = null;
 		try {
-			// MR_tmp is where the file was stored from being sent by the Client, remove when done
-			Path myFile = Paths.get(Utils.TMP_FILE);
+			Path myFile = Paths.get(filename);
 			byteArrOfFile = Files.readAllBytes(myFile);
-			Files.delete(myFile);
+			if (deleteAfter)
+				Files.delete(myFile);
+			synchronized (this) {
+				for (WorkerConnection wc : workerQueue)
+					if(!wc.isStopped())
+						wc.sendFile(myFile.getFileName().toString(), byteArrOfFile);
+			}
 		} catch (IOException e) {
 			System.err.println("Error reading MR file in Master node");
 			return;
 		}
-		synchronized (this) {
-			for (WorkerConnection wc : workerQueue)
-				if(!wc.isStopped())
-					wc.sendFile(byteArrOfFile);
-		}
-	}
-	
-	// TODO multiple clients trying to submit MRFiles
-	public void sendMRFileToWorkers(final String filePath) {
-		// use a new thread to allow the GUI to appear reactive
-		new Thread(new Runnable() {
-			public void run() {
-				byte[] data;
-				try {
-					Path path = Paths.get(filePath);
-					data = Files.readAllBytes(path);
-				} catch (IOException e) {
-					System.err.println("Error reading MR file in Master node");
-					return;
-				}
-				synchronized (Master.this) {   // prevent concurrent modification
-					for (WorkerConnection wc : workerQueue)
-						if (!wc.isStopped())
-							wc.sendFile(data);
-				}
-			}
-		}).start();
 	}
     
     private synchronized int getJobs() {
@@ -204,12 +184,12 @@ public class Master extends Thread {
 			}
 			else if (line[0].equalsIgnoreCase("ld")) {
 				if (line.length > 1) {
-					sendMRFileToWorkers(line[1]);
+					sendMRFileToWorkers(line[1], false);
 				}
 				else {
 					System.out.printf("Enter filename:%n> ");
 					command = in.nextLine().trim();
-					sendMRFileToWorkers(command);
+					sendMRFileToWorkers(command, false);
 				}
 			}
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication

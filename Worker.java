@@ -12,6 +12,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -63,6 +65,17 @@ public class Worker implements Runnable {
 		}
     }
     
+    public void writeMaster(String arg, byte... barg) {
+    	try {
+    		byte[] barr = Utils.concat(arg.getBytes(), barg);
+    		out.write(barr);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Master: closing connection.");
+    		this.closeConnection();
+    	}
+    }
+    
     public void writeMaster(String arg) {
     	try {
     		out.write(arg.getBytes());
@@ -87,49 +100,6 @@ public class Worker implements Runnable {
     	return stopped;
     }
     
-	// TODO add it so User can send already compiled classes over byte stream
-	private Mapper<?, ?> compileAndLoadMRFile(){
-		
-		try {	
-			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
-			//be sure to change "java.exe" to point to the one in JDK not in JRE, else the compiler ref comes back as null 
-			if (compiler == null)
-				throw new CompilerException("Error: no compiler set for MR file");
-			// zero means compile success
-			// TODO make it not hardcoded as MR.java
-			int compilationResult = compiler.run(null, null, null, "MR.java");  
-			System.out.println("MR.java compilation " + (compilationResult==0? "successful" : "failed") ); 
-			// TODO: let the client send the class name and load that here
-			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass("MR"); 
-			return (Mapper<?, ?>) myClass.newInstance();
-		} catch (Exception e) {
-			System.err.println("Exception loading or compiling the File: " + e);
-			return null;
-		}
-	} 			
-    
-	private void receiveMRFile(){
-		System.out.print("Worker received new MR job: ");
-		try{
-			byte[] mybytearray = new byte[1024];
-			// TODO change that MR.java is hard-coded
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR.java"));
-			int totalCount = 0;
-			while(true) {
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				totalCount += bytesRead;
-				if (bytesRead <= 0) break;
-				bos.write(mybytearray, 0, bytesRead);
-				if (bytesRead < 1024) break;
-			}
-			System.out.printf("%d bytes downloaded%n", totalCount);
-			bos.close();
-		} catch (IOException e) {
-    		System.err.println("Error receiving MR file from Master: closing connection.");
-    		this.closeConnection();
-		}
-	}
-    
     public String toString() {
     	return socket.toString();
     }
@@ -144,6 +114,60 @@ public class Worker implements Runnable {
     		out.close();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
+    
+	// TODO add it so User can send already compiled classes over byte stream
+	private Mapper<?, ?> compileAndLoadMRFile(String filename){
+		
+		try {	
+			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
+			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
+				throw new CompilerException("Error: no compiler set for MR file");
+			// zero means compile success
+			int compilationResult = compiler.run(null, null, null, filename); 
+			System.out.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
+			// Class name is the filename before '.java'
+			String className = filename.split("\\.")[0];
+			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
+			Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
+			// clean up the files you created
+			Files.delete(Paths.get(filename));
+			Files.delete(Paths.get(className + ".class"));
+			return mr;
+		} catch (Exception e) {
+			System.err.println("Exception loading or compiling the File: " + e);
+			return null;
+		}
+	} 			
+    
+	private String receiveMRFile(){
+		System.out.print("Worker received new MR job: ");
+		try{
+			// the first thing sent will be the filename
+			int f;
+			String name = "";
+			while( (f = in.read()) != '\n') {
+				name += (char) f;
+			}
+			// now read the actual byte array
+			byte[] mybytearray = new byte[1024];
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(name));
+			int totalCount = 0;
+			while(true) {
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				totalCount += bytesRead;
+				if (bytesRead <= 0) break;
+				bos.write(mybytearray, 0, bytesRead);
+				if (bytesRead < 1024) break;
+			}
+			System.out.printf("%d bytes downloaded%n", totalCount);
+			bos.close();
+			return name;
+		} catch (IOException e) {
+    		System.err.println("Error receiving MR file from Master: closing connection.");
+    		this.closeConnection();
+    		return null;
+		}
+	}
     
     public void receive(int command) {
 
@@ -160,10 +184,12 @@ public class Worker implements Runnable {
 			break;
 		case Utils.M2W_UPLOAD:
 			writeMaster(Utils.M2W_UPLOAD_OKAY);
-			receiveMRFile(); 
 			// TODO filesystem that can take in actual file names instead of "here", "there"
-			currentJob = new Job<>(this, compileAndLoadMRFile(), "here", "there");
-			currentJob.begin();
+			Mapper<?, ?> mr = compileAndLoadMRFile(receiveMRFile());
+			if (mr != null) {
+				currentJob = new Job<>(this, mr, "here", "there");
+				currentJob.begin();
+			}
 			break;		
 		case Utils.W2M_RESULTS_OKAY:
 			currentJob.sendResults();

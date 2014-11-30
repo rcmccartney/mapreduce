@@ -10,9 +10,6 @@ public class Utils {
 	// Flag to turn on/off debug messages (mostly logs) on the server
 	public static final boolean DEBUG = true;
 	
-	// When reading a file over byte stream from a client it is stored to this location
-	public static final String TMP_FILE = "MR_tmp.java";
-	
 	public static final int DEF_WP2P_PORT = 40016,
 							DEF_MASTER_PORT = 40001;
 	
@@ -41,5 +38,14 @@ public class Utils {
 	public static void debug(String str){
 		if(DEBUG)
 			System.out.println(str);
+	}
+	
+	public static byte[] concat(byte[] a, byte[] b) {
+		int aLen = a.length;
+		int bLen = b.length;
+		byte[] c= new byte[aLen+bLen];
+		System.arraycopy(a, 0, c, 0, aLen);
+		System.arraycopy(b, 0, c, aLen, bLen);
+		return c;
 	}
 }
