@@ -23,13 +23,14 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
 
 public class Master extends Thread {
 
-	public MasterJob<?, ?> mj = null;
+	protected MasterJob<?, ?> mj = null;
 	protected ServerSocket serverSocket;
 	protected int port = Utils.DEF_MASTER_PORT;
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
+	// Hashtable is synchronized 
 	private Hashtable<Integer, List<String>> fileHashTable;
 	
 	public Master(String[] args) throws IOException	{
@@ -47,6 +48,35 @@ public class Master extends Thread {
     public synchronized void writeAllWorkers(String message){
     	for (WorkerConnection wc : workerQueue)
     		wc.writeWorker(message);
+    }
+    
+    public synchronized WorkerConnection get(int workerID) {
+    	for (WorkerConnection wc : workerQueue)
+    		if (wc.id == workerID) 
+    			return wc;
+    	return null;
+    }
+    
+    
+    public void sendFile(String workerID, String filename) {
+		byte[] byteArrOfFile = null;
+		try {
+			Path myFile = Paths.get(filename);
+			byteArrOfFile = Files.readAllBytes(myFile);
+			WorkerConnection wk = this.get(Integer.parseInt(workerID));
+			if (wk != null) {
+				wk.sendFile(myFile.getFileName().toString(), 
+							byteArrOfFile, Utils.M2W_FILE);
+				System.out.printf("%s sent to Worker %s%n", filename, workerID);
+			}
+			else 
+				System.err.printf("%s is not in the cluser%n", workerID);
+		} catch (NumberFormatException n) {
+			System.err.println("Not a valid worker ID");
+		}
+		catch (IOException e) {
+			System.err.println("Error reading file in Master node");
+		}
     }
     
 	// check if this method needs to be called by multiple threads. 
@@ -71,7 +101,7 @@ public class Master extends Thread {
 				synchronized (this) {
 					for (WorkerConnection wc : workerQueue)
 						if(!wc.isStopped())
-							wc.sendFile(myFile.getFileName().toString(), byteArrOfFile);
+							wc.sendFile(myFile.getFileName().toString(), byteArrOfFile, Utils.M2W_MR_UPLOAD);
 				}
 				System.err.println("...Finished sending MR job to worker nodes");
 			}
@@ -99,7 +129,7 @@ public class Master extends Thread {
     	return jobs;
     }
     
-    private synchronized void printFiles(int workerID) {
+    private void printFiles(int workerID) {
     	List<String> l = fileHashTable.get(workerID);
     	for (String file : l) 
     		System.out.println("  " + file);
@@ -148,8 +178,8 @@ public class Master extends Thread {
 		}
 	}
 	
-	//TODO better synchronization instead of this, hashmap isntead of hastable?
-	public synchronized void addFiles(Integer workerID, List<String> files) {
+	//TODO better synchronization instead of hastable using concurrent Hashmap?
+	public void addFiles(Integer workerID, List<String> files) {
 		fileHashTable.put(workerID, files);
 	}
 	
@@ -213,6 +243,8 @@ public class Master extends Thread {
 					printHelp();
 				else if (line[1].equalsIgnoreCase("ld"))
 					printLD();
+				else if (line[1].equalsIgnoreCase("lf"))
+					printLF();
 				else
 					unrecognized(line[1]);
 			else if (line[0].equalsIgnoreCase("ls")) {
@@ -241,6 +273,18 @@ public class Master extends Thread {
 					setMRJob(command, false);
 				}
 			}
+			else if (line[0].equalsIgnoreCase("lf")) {
+				if (line.length == 3) {
+					sendFile(line[1], line[2]);
+				}
+				else {
+					System.out.printf("Enter worker ID:%n> ");
+					String wk = in.nextLine().trim();
+					System.out.printf("Enter filename:%n> ");
+					command = in.nextLine().trim();
+					sendFile(wk, command);
+				}
+			}
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
 				try {
 					new WorkerP2P<String, String>(40013, null).send("Kumar", 
@@ -265,28 +309,33 @@ public class Master extends Thread {
 		printHelp();
 		printLS();
 		printLD();
+		printLF();
 		printQ();
 	}
 	
 	protected void printHelp() {
-		System.out.println("help <cmd>: Get further information on <cmd>");
+		System.out.println("help <cmd>: get further information on <cmd>");
 	}
 	
 	protected void printQ() {
-		System.out.println("q: Quit the system (y to confirm)");
+		System.out.println("q: quit the system (y to confirm)");
 	}
 	
 	protected void printMan() {
-		System.out.println("man: Display manual");
+		System.out.println("man: display manual");
 	}
 	
 	protected void printLS() {
-		System.out.println("ls [-l]: List the workers currently in the cluster");
-		System.out.println("  -l: List the files located at each worker");
+		System.out.println("ls [-l]: list the workers currently in the cluster");
+		System.out.println(" -l includes the files located at each worker");
 	}
 	
 	protected void printLD() {
-		System.out.println("ld [filename]: Load the map-reduce job");
+		System.out.println("ld [filename]: load the map-reduce job");
+	}
+	
+	protected void printLF() {
+		System.out.println("lf [workerID] [filename]: load the file to Worker workerID");
 	}
 		
 	public static void main(String[] args) throws IOException {

@@ -31,6 +31,8 @@ public class WorkerConnection extends Thread {
         outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
+        // first tell the worker his ID
+        out.write(id);
         // tell the worker to send their files to you
         writeWorker(Utils.M2W_REQ_LIST);
     }
@@ -130,11 +132,11 @@ public class WorkerConnection extends Thread {
 		}
 	} 
     
-	public void sendFile(String name, byte[] bArr) {
+	public void sendFile(String name, byte[] bArr, byte transferType) {
 		MRFileName = name;
 		byteArrOfMRFile = bArr;
 		//notify client of pending MR transmission and wait for response
-		writeWorker(Utils.M2W_UPLOAD);
+		writeWorker(transferType);
 		writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
 	}
     
@@ -172,7 +174,7 @@ public class WorkerConnection extends Thread {
 	 */
 	private void getFilesList() {
 		try {
-			int length = in.read();
+			int length = in.read();  // TODO won't work for more than 1 byte of files
 			List<String> list = new LinkedList<>();
 			byte[] mybytearray = new byte[1024];
 			for(int i=0;i<length;i++) {
@@ -183,7 +185,7 @@ public class WorkerConnection extends Thread {
 				}
 			}
 			master.addFiles(id, list);
-		} catch (IOException e){
+		} catch (IOException e) {
 			System.err.println("Exception while receiving file listing from Client: " + e);
 		}
 	}
