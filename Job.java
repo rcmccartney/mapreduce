@@ -1,11 +1,12 @@
 package mapreduce;
 
 import java.io.File;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class Job<K, V> {
+public class Job<K extends Serializable, V> {
 
 	protected Worker worker;
 	protected Mapper<K, V> mr;

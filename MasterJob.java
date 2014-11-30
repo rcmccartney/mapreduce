@@ -1,8 +1,9 @@
 package mapreduce;
 
+import java.io.Serializable;
 import java.util.HashMap;
 
-public class MasterJob<K, V> {
+public class MasterJob<K extends Serializable, V> {
 
 	protected Mapper<K, V> currentJob;
 	protected HashMap<K, Integer> keyCounts; 

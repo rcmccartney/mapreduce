@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,6 +31,8 @@ public class WorkerConnection extends Thread {
         outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
+        // tell the worker to send their files to you
+        writeWorker(Utils.M2W_REQ_LIST);
     }
     
     public void writeWorker(final String arg, final byte... barg) {
@@ -108,6 +112,9 @@ public class WorkerConnection extends Thread {
 			closeConnection();
 			master.setMRJob(name, true);
 			break;
+		case Utils.M2W_REQ_LIST_OKAY:
+			getFilesList();
+			break;
 		case Utils.W2M_KEY:
 			master.mj.receiveWorkerKey(readBytes(), this.id);
 			break;
@@ -156,6 +163,28 @@ public class WorkerConnection extends Thread {
 		} catch (IOException e) {
 			System.err.println("Exception while receiving file from Client: " + e);
 			return null;
+		}
+	}
+	
+	/*Function to get list of files from Worker
+	 * Sends REQ_LIST(R) to worker and reads list
+	 * Adds it to hashtable
+	 */
+	private void getFilesList() {
+		try {
+			int length = in.read();
+			List<String> list = new LinkedList<>();
+			byte[] mybytearray = new byte[1024];
+			for(int i=0;i<length;i++) {
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				if(bytesRead > 0) {
+					String fileName = new String(mybytearray,0,bytesRead);
+					list.add(fileName);
+				}
+			}
+			master.addFiles(id, list);
+		} catch (IOException e){
+			System.err.println("Exception while receiving file listing from Client: " + e);
 		}
 	}
 	

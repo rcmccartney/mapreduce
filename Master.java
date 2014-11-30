@@ -11,7 +11,9 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Scanner;
 
 import javax.tools.JavaCompiler;
@@ -21,16 +23,18 @@ import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
 
 public class Master extends Thread {
 
+	public MasterJob<?, ?> mj = null;
 	protected ServerSocket serverSocket;
 	protected int port = Utils.DEF_MASTER_PORT;
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
-	public MasterJob<?, ?> mj = null;
+	private Hashtable<Integer, List<String>> fileHashTable;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
+		fileHashTable = new Hashtable<>();
 		if (args.length > 0)
 			parseArgs(args);
 		serverSocket = new ServerSocket(port);
@@ -94,6 +98,12 @@ public class Master extends Thread {
     private synchronized int getJobs() {
     	return jobs;
     }
+    
+    private synchronized void printFiles(int workerID) {
+    	List<String> l = fileHashTable.get(workerID);
+    	for (String file : l) 
+    		System.out.println("  " + file);
+    }
 
     public synchronized void stopServer() {
         this.stopped = true;
@@ -126,6 +136,8 @@ public class Master extends Thread {
 	}
 	
 	public synchronized void remove(int workerID) {
+		
+		fileHashTable.remove(workerID);
 		Iterator<WorkerConnection> it = workerQueue.iterator();
 		while (it.hasNext()) {
 			WorkerConnection curr = it.next();
@@ -134,6 +146,11 @@ public class Master extends Thread {
 				break;
 			}
 		}
+	}
+	
+	//TODO better synchronization instead of this, hashmap isntead of hastable?
+	public synchronized void addFiles(Integer workerID, List<String> files) {
+		fileHashTable.put(workerID, files);
 	}
 	
 	public void run()	{
@@ -200,8 +217,11 @@ public class Master extends Thread {
 					unrecognized(line[1]);
 			else if (line[0].equalsIgnoreCase("ls")) {
 				synchronized (this) {
-					for (WorkerConnection wc : workerQueue)
+					for (WorkerConnection wc : workerQueue) {
 						System.out.println(wc);
+						if (line.length > 1 && line[1].equals("-l"))
+							printFiles(wc.id);
+					}
 				}
 			}
 			else if (line[0].equalsIgnoreCase("q")) {
@@ -261,7 +281,8 @@ public class Master extends Thread {
 	}
 	
 	protected void printLS() {
-		System.out.println("ls: List the workers currently in the cluster");
+		System.out.println("ls [-l]: List the workers currently in the cluster");
+		System.out.println("  -l: List the files located at each worker");
 	}
 	
 	protected void printLD() {

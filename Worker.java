@@ -6,6 +6,7 @@ package mapreduce;
 //******************************************************************************
 
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,6 +35,7 @@ public class Worker implements Runnable {
 	//stopped is used by multiple threads, must be synchronized
 	protected boolean stopped = false;
 	protected Job<?, ?> currentJob;
+	protected File baseDir;
 	// TODO job queue 
     
     /**
@@ -52,6 +54,9 @@ public class Worker implements Runnable {
     		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
+        	baseDir = new File(Utils.basePath);
+        	if (!baseDir.isDirectory())
+        		baseDir.mkdirs();
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
@@ -90,6 +95,16 @@ public class Worker implements Runnable {
     	}
     }
 
+    public void writeMaster(int arg) {
+    	try {
+    		out.write(arg);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Master: closing connection.");
+    		this.closeConnection();
+    	}
+    }
+    
     public synchronized boolean isStopped() {
     	return stopped;
     }
@@ -152,6 +167,21 @@ public class Worker implements Runnable {
     		return null;
 		}
 	}
+	
+	/*Function to send filesList to Master
+     * Path of default directory is in Utils
+     */
+    public void sendFilesList(File path){
+    	if (path.isDirectory()) {
+    		File[] filesList = path.listFiles();
+    		writeMaster(filesList.length);
+    		for(int i=0;i<filesList.length;i++){
+    			writeMaster(filesList[i].getName());
+    		}
+    	}
+    	else
+    		writeMaster(0);
+    }
     
     public void receive(int command) {
 
@@ -169,7 +199,11 @@ public class Worker implements Runnable {
 				currentJob = new Job<>(this, mr, "here", "there");
 				currentJob.begin();
 			}
-			break;		
+			break;	
+		case Utils.M2W_REQ_LIST:  // master is requesting file list
+			writeMaster(Utils.M2W_REQ_LIST_OKAY);
+			sendFilesList(baseDir);
+			break;
 		default:
 			System.err.println("Unrecognized Worker command: " + command);
 			break;

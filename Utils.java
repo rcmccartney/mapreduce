@@ -1,7 +1,5 @@
 package mapreduce;
 
-import com.google.gson.Gson;
-
 /*
  * This class stores the constants used through out the project. 
  */
@@ -22,10 +20,13 @@ public class Utils {
 			W2M_KEY_COMPLETE = 'Z', 
 			M2W_KEYASSIGN = 'M',
 			W2W_KEY_TRANSFER = 'K',
-			W2M_RESULTS = 'R';
+			W2M_RESULTS = 'R',
+			M2W_REQ_LIST = 'F',
+			M2W_REQ_LIST_OKAY = 'F';
+
 	
-	// Reference to a reusable GSON object that's used in parsing to / from GSON
-	public static final Gson gson = new Gson(); 
+	//Path for flat directory, where each worker stores files
+	public static final String basePath = "temp/";
 	
 	/*
 	 * This method prints messages on to the console if DEBUG flag is on.
