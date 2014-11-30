@@ -109,9 +109,7 @@ public class WorkerConnection extends Thread {
 			master.setMRJob(name, true);
 			break;
 		case Utils.W2M_KEY:
-			System.out.println("HERE");
 			master.mj.receiveWorkerKey(readBytes(), this.id);
-			System.out.println("HERE3");
 			break;
 		case Utils.W2M_KEY_COMPLETE:
 			master.mj.setKeyTransferComplete(this.id);
@@ -120,7 +118,7 @@ public class WorkerConnection extends Thread {
 			master.mj.receiveWorkerResults(readBytes());
 			break;
 		default:
-			System.err.println("Invalid command received on WorkerConnection");
+			System.err.println("Invalid command received on WorkerConnection: " + command);
 			break;
 		}
 	} 
@@ -164,10 +162,12 @@ public class WorkerConnection extends Thread {
 	public byte[] readBytes() {
 		try{		
 			byte[] mybytearray = new byte[1024];
-			int bytesRead;
 			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			while ((bytesRead = in.read(mybytearray, 0, mybytearray.length)) != -1) {
+			while (true) {
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				if (bytesRead <= 0) break;
 				bos.write(mybytearray, 0, bytesRead);
+				if (bytesRead < 1024) break;
 			}
 			bos.flush();
 			return bos.toByteArray();

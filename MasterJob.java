@@ -10,18 +10,17 @@ public class MasterJob<K, V> {
 
 	
 	public MasterJob(Mapper<K, V> mr) {
+		currentJob = mr;
 		keyCounts = new HashMap<>();
 		keyWorker = new HashMap<>();
-		System.out.println("HERE2 CONSTRUCT");
 	}
 
-	public void receiveWorkerKey(byte[] barr, int id) {
-		System.out.println("HERE2");
+	public synchronized void receiveWorkerKey(byte[] barr, int id) {
 		byte[] bInt = new byte[4];
 		byte[] keyArr = new byte[barr.length-4]; //subtract last 4 for integer
 		System.arraycopy(barr, 0, keyArr, 0, barr.length-4);
 		System.arraycopy(barr, barr.length-4, bInt, 0, 4);
-		K key = (K) currentJob.readBytes(keyArr);
+		K key = currentJob.readBytes(keyArr);
 		aggregate(key, Utils.byteArrayToInt(bInt)); 
 		keyWorker.put(id, key);
 	}
@@ -34,9 +33,8 @@ public class MasterJob<K, V> {
 	}
 
 	public void setKeyTransferComplete(int id) {
-		System.out.println(keyWorker.get(id));
-		for( K key: keyCounts.keySet()) 
-			System.out.println(key + ": " + keyCounts.get(key));
+		for(K key: keyCounts.keySet()) 
+			System.out.println("Key: " + key + " Value: " + keyCounts.get(key));
 	}
 
 	public void receiveWorkerResults(byte[] barr) {
