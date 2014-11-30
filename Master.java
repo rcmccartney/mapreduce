@@ -56,6 +56,7 @@ public class Master extends Thread {
 					if(!wc.isStopped())
 						wc.sendFile(myFile.getFileName().toString(), byteArrOfFile);
 			}
+			System.err.println("...Finished sending MR job to worker nodes");
 		} catch (IOException e) {
 			System.err.println("Error reading MR file in Master node");
 			return;

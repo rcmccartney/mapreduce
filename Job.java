@@ -33,6 +33,8 @@ public class Job<K, V> {
 		// now the output map has been populated, so it needs to be shuffled and sorted 
 		// first notify Master of the keys you have at this node, and their sizes
 		worker.writeMaster(Utils.W2M_KEY);
+		sendKeysToMaster();
+
 		
 		
 		// TODO this is testing code to be removed, ignores all P2P traffic
@@ -68,6 +70,7 @@ public class Job<K, V> {
 		
 		//finalOut holds the results of this MR job, send it to Master
 		worker.writeMaster(Utils.W2M_RESULTS);
+		sendResults();
 	}
 	
 	public void emit(K key, V value) {

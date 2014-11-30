@@ -61,7 +61,6 @@ public class Worker implements Runnable {
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
 			System.out.println("Did you specify the correct hostname and port of the server?");
-			System.out.println("Please try again later.");
 		}
     }
     
@@ -175,15 +174,10 @@ public class Worker implements Runnable {
 		case Utils.MR_QUIT:  //quit command
     		closeConnection();
     		break;
-		case Utils.W2M_KEY_OKAY:
-			currentJob.sendKeysToMaster();
-			break;
 		case Utils.M2W_KEYASSIGN:	
-			writeMaster(mapreduce.Utils.M2W_KEYASSIGN_OKAY);
 			currentJob.receiveKeyAssignments();
 			break;
 		case Utils.M2W_UPLOAD:
-			writeMaster(Utils.M2W_UPLOAD_OKAY);
 			// TODO filesystem that can take in actual file names instead of "here", "there"
 			Mapper<?, ?> mr = compileAndLoadMRFile(receiveMRFile());
 			if (mr != null) {
@@ -191,9 +185,6 @@ public class Worker implements Runnable {
 				currentJob.begin();
 			}
 			break;		
-		case Utils.W2M_RESULTS_OKAY:
-			currentJob.sendResults();
-			break;
 		default:
 			System.err.println("Unrecognized Worker command: " + command);
 			break;

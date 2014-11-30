@@ -103,28 +103,15 @@ public class WorkerConnection extends Thread {
 		//this workerconnection is only used for a client to send a MR job to the Master
 		// after which it is shutdown
 		case Utils.C2M_UPLOAD:	
-			writeWorker(mapreduce.Utils.C2M_UPLOAD_OKAY);
 			String name = receiveFileFromClient();
 			closeConnection();
-			if (name != null) {
-				master.sendMRFileToWorkers(name, true);
-				System.err.println("...Finished sending MR job to worker nodes");
-			}
-			break;
-		// this is called when the Worker notifies a connection it is ready to receive file
-		case Utils.M2W_UPLOAD_OKAY:
-			writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
+			master.sendMRFileToWorkers(name, true);
 			break;
 		case Utils.W2M_KEY:
-			writeWorker(Utils.W2M_KEY_OKAY);
 			receiveWorkerKeys();
 			break;
-		case Utils.M2W_KEYASSIGN_OKAY:
-			// TODO send the Worker the keys he's assigned
-			break;
 		case Utils.W2M_RESULTS:
-			writeWorker(Utils.W2M_RESULTS_OKAY);
-			// TODO receive the results from the worker after Job is finished
+			receiveWorkerResults();
 			break;
 		default:
 			System.err.println("Invalid command received on WorkerConnection");
@@ -132,15 +119,16 @@ public class WorkerConnection extends Thread {
 		}
 	} 
     
-    public void sendFile(String name, byte[] bArr) {
+	public void sendFile(String name, byte[] bArr) {
 		MRFileName = name;
 		byteArrOfMRFile = bArr;
 		//notify client of pending MR transmission and wait for response
 		writeWorker(mapreduce.Utils.M2W_UPLOAD);
+		writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
 	}
     
 	private String receiveFileFromClient(){
-		System.err.println("...Receiving MR job from Client node");
+		System.err.print("...Receiving MR job from Client node: ");
 		try{
 			// the first thing sent will be the filename
 			int f;
@@ -162,13 +150,18 @@ public class WorkerConnection extends Thread {
 			bos.close();
 			return name;
 		} catch (IOException e) {
-			System.err.println("Exception in WorkerConnection: receiveFile() " + e);
+			System.err.println("Exception while receiving file from Client: " + e);
 			return null;
 		}
 	}
     
     private void receiveWorkerKeys() {
 		// TODO receive this workers keys and give to Master to compile
+	}
+    
+    private void receiveWorkerResults() {
+		// TODO Auto-generated method stub
+		
 	}
 
 	/**
