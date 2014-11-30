@@ -5,16 +5,19 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
 
-
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
-	protected int port = 40001;
+	protected int port = Utils.DEF_MASTER_PORT;
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
@@ -27,26 +30,58 @@ public class Master extends Thread {
 		serverSocket = new ServerSocket(port);
 	}
 	
-	public void receive(String command, int id) {
-		// TODO Auto-generated method stub
-	}
-	
     private synchronized boolean isStopped() {
         return stopped;
     }
     
     public synchronized void writeAllWorkers(String message){
-    	Iterator<WorkerConnection> it = workerQueue.iterator();
-		while (it.hasNext())
-			it.next().writeWorker(message);
+    	for (WorkerConnection wc : workerQueue)
+    		wc.writeWorker(message);
     }
+    
+	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+    // this method is for sending file received by a client
+	public void sendMRFileToWorkers(){
+		// TODO changed file location to be relative - verify works
+		byte[] byteArrOfFile = null;
+		try {
+			Path myFile = Paths.get("MR_tmp.java");
+			byteArrOfFile = Files.readAllBytes(myFile);
+		} catch (IOException e) {
+			System.err.println("Error reading MR file in Master node");
+			return;
+		}
+		synchronized (this) {
+			for (WorkerConnection wc : workerQueue)
+				if(!wc.isStopped())
+					wc.sendFile(byteArrOfFile);
+		}
+	}
+	
+	// check if this method needs to be called by multiple threads. i.e multiple clients trying to submit MRFiles
+	public void sendMRFileToWorkers(final String filePath) {
+		// use a new thread to allow the GUI to appear reactive
+		new Thread(new Runnable() {
+			public void run() {
+				byte[] data;
+				try {
+					Path path = Paths.get(filePath);
+					data = Files.readAllBytes(path);
+				} catch (IOException e) {
+					System.err.println("Error reading MR file in Master node");
+					return;
+				}
+				synchronized (Master.this) {   // prevent concurrent modification
+					for (WorkerConnection wc : workerQueue)
+						if (!wc.isStopped())
+							wc.sendFile(data);
+				}
+			}
+		}).start();
+	}
     
     private synchronized int getJobs() {
     	return jobs;
-    }
-    
-    public Iterator<WorkerConnection> iterator() {
-    	return workerQueue.iterator();
     }
 
     public synchronized void stopServer() {
@@ -148,6 +183,8 @@ public class Master extends Thread {
 					printQ();
 				else if (line[1].equalsIgnoreCase("help"))
 					printHelp();
+				else if (line[1].equalsIgnoreCase("ld"))
+					printLD();
 				else
 					unrecognized(line[1]);
 			else if (line[0].equalsIgnoreCase("ls")) {
@@ -163,6 +200,25 @@ public class Master extends Thread {
 				if (command.equalsIgnoreCase("y") || command.equalsIgnoreCase("yes")) 
 					stopServer();
 			}
+			else if (line[0].equalsIgnoreCase("ld")) {
+				if (line.length > 1) {
+					sendMRFileToWorkers(line[1]);
+				}
+				else {
+					System.out.printf("Enter filename:%n> ");
+					command = in.nextLine().trim();
+					sendMRFileToWorkers(command);
+				}
+			}
+			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
+				try {
+					new WorkerP2P<String, String>(40013, null).send("Kumar", 
+							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.DEF_WP2P_PORT);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+
 			else 
 				unrecognized(line[0]);
 		} while (!isStopped());
@@ -178,6 +234,7 @@ public class Master extends Thread {
 		printMan();
 		printHelp();
 		printLS();
+		printLD();
 		printQ();
 	}
 	
@@ -195,6 +252,10 @@ public class Master extends Thread {
 	
 	protected void printLS() {
 		System.out.println("ls: List the workers currently in the cluster");
+	}
+	
+	protected void printLD() {
+		System.out.println("ld [filename]: Load the map-reduce job");
 	}
 		
 	public static void main(String[] args) throws IOException {

@@ -1,49 +1,73 @@
 package mapreduce;
 
-import java.io.BufferedReader;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class WorkerConnection extends Thread {
 
     protected Socket clientSocket;
-    protected int id;
-	protected BufferedReader in;
+    protected final int id;
+	protected InputStream in;
 	protected OutputStream out;
 	protected boolean stopped = false;
 	protected Master master;
+	protected ExecutorService outQueue;
+	private byte[] byteArrOfMRFile;
 
     public WorkerConnection(Master master, Socket clientSocket, int id) throws IOException {
         this.clientSocket = clientSocket;
         out = clientSocket.getOutputStream();
-        in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+        in = clientSocket.getInputStream();
+        outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
     }
     
     public void writeWorker(final String arg) {
-    	// TODO change this to a worker pool?
-    	new Thread(new Runnable() {
-			@Override
+    	outQueue.execute(new Runnable() {
 			public void run() {
 		    	try {
 		    		out.write(arg.getBytes());
+		    		out.flush();
 		    	} catch (IOException e) {
 		    		System.err.println("Error writing to Worker " + id + ": closing connection.");
 		    		closeConnection();
 		    	}				
 			}
-    	}).start();
+    	});
+    }
+    
+    public void writeWorker(final byte... arg) {
+    	outQueue.execute(new Runnable() {
+			public void run() {
+		    	try {
+		    		out.write(arg);
+		    		out.flush();
+		    	} catch (IOException e) {
+		    		System.err.println("Error writing to Worker " + id + ": closing connection.");
+		    		closeConnection();
+		    	}				
+			}
+    	});
     }
     
     public synchronized void closeConnection() {
-    	// TODO inform worker of closing without infinite loop on bad writes
     	stopped = true;
     	master.remove(id);
     	try {
-    		clientSocket.close();
+    		outQueue.shutdown();
+    		if (!clientSocket.isClosed()) {
+    			// don't use writeWorker since that will call close recursively
+    			out.write(mapreduce.Utils.MR_QUIT); 
+    			out.flush();
+    			clientSocket.close();
+    		}
     		in.close();
     		out.close();
     	} catch (IOException e) { }  //ignore exceptions since you are closing it anyways
@@ -53,20 +77,47 @@ public class WorkerConnection extends Thread {
     	return stopped;
     }
     
-    @Override
     public String toString() {
     	return "Worker " + this.id + ": " + clientSocket.toString();
     }
+    
+	public void sendFile(byte[] bArr) {
+		byteArrOfMRFile = bArr;
+		//notify client of pending MR transmission
+		writeWorker(mapreduce.Utils.MR_W);
+	}
 
+	private void receive(int command){
+		
+		switch(command) {
+		//this workerconnection is only used for a client to send a MR job to the Master
+		case mapreduce.Utils.MR_C:	
+			writeWorker(mapreduce.Utils.MR_C_OKAY);
+			receiveFileFromClient();
+			closeConnection();
+			master.sendMRFileToWorkers();
+			System.out.println("finished sending and loading MR job to workers");
+			break;
+			
+		case mapreduce.Utils.MR_W_OKAY:
+			writeWorker(byteArrOfMRFile); //write the current bytearray file for the connection
+			break;
+
+		default:
+			System.err.println("Invalid command received on WorkerConnection");
+			break;
+		}
+	} 
+    
     /**
      * This is the loop that listens to the socket for messages from this particular Worker
      */
     public void run() {
-    	String command;
+    	int command;
     	while(!isStopped()) {
     		try {
-    			if ( (command = in.readLine()) != null)
-    				master.receive(command, id);
+    			if ( (command = in.read()) != 0)
+    				receive(command);
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
 					return;
@@ -75,4 +126,22 @@ public class WorkerConnection extends Thread {
 			}
     	}
     }
+    
+	private void receiveFileFromClient(){
+		System.out.println("WorkerConnection: receiveFile() called");
+		try{
+			byte[] mybytearray = new byte[1024];
+			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("MR_tmp.java"));
+			while(true){
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				System.out.println("bytes read " + bytesRead);
+				if (bytesRead <= 0) break;
+				bos.write(mybytearray, 0, bytesRead);
+				if (bytesRead < 1024) break;
+			}
+			bos.close();
+		} catch (IOException e) {
+			System.out.println("Exception in WorkerConnection: receiveFile() " + e);
+		}
+	}
 }
