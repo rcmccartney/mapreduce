@@ -22,7 +22,11 @@ public class Utils {
 			MR_QUIT = 'Q',
 			MR_MASTER_KEY = 'M',
 			W2W_K = 'K',
-			W2W_K_OKAY = 'L';
+			W2W_K_OKAY = 'L',
+			REQ_LIST = 'R';
+	
+	//Path for flat directory, where each worker stores files
+	public static String filePath = "temp/";
 	
 	// Reference to a reusable GSON object that's used in parsing to / from GSON
 	public static final Gson gson = new Gson(); 

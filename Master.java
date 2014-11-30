@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
+import java.util.Hashtable;
 
 public class Master extends Thread {
 
@@ -21,7 +22,9 @@ public class Master extends Thread {
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
-	protected Collection<WorkerConnection> workerQueue; 
+	protected Collection<WorkerConnection> workerQueue;
+	//Hashtable for file system <worker_id, list of filenames>
+	protected static Hashtable fileHashTable;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
@@ -259,6 +262,8 @@ public class Master extends Thread {
 	}
 		
 	public static void main(String[] args) throws IOException {
+		//Initialize filesystem
+		fileHashTable = new Hashtable();
 		Master m = new Master(args);
 		m.start();
 		m.commandLineInterface();  //run by main thread of execution

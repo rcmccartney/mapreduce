@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 
 public class WorkerConnection extends Thread {
 
@@ -70,6 +72,12 @@ public class WorkerConnection extends Thread {
     		}
     		in.close();
     		out.close();
+    		//Remove worker from filetable
+    		synchronized(mapreduce.Master.fileHashTable){
+	    		if (mapreduce.Master.fileHashTable.containsKey(id)){
+	    			mapreduce.Master.fileHashTable.remove(id);
+	    		}
+    		}
     	} catch (IOException e) { }  //ignore exceptions since you are closing it anyways
     }
     
@@ -109,11 +117,39 @@ public class WorkerConnection extends Thread {
 		}
 	} 
     
+	/*Function to get list of files from Worker
+	 * Sends REQ_LIST(R) to worker and reads list
+	 * Adds it to hashtable
+	 */
+	private void getFilesList(){
+		try{
+			out.write(Utils.REQ_LIST);
+			int length = in.read();
+			LinkedList<String> list = new LinkedList();
+			byte[] mybytearray = new byte[1024];
+			for(int i=0;i<length;i++){
+				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+				if(bytesRead > 0){
+					String fileName = new String(mybytearray,0,bytesRead);
+					list.add(fileName);
+				}
+			}
+			synchronized(mapreduce.Master.fileHashTable){
+				mapreduce.Master.fileHashTable.put(id, list);
+				System.out.println("Added for "+id+" "+list.toString());
+			}
+		}catch (Exception e){
+			System.out.println("Error fetching file list from Worker: "+id);
+		}
+	}
+	
     /**
      * This is the loop that listens to the socket for messages from this particular Worker
      */
     public void run() {
     	int command;
+    	//Since this is first we get list of files from worker
+    	getFilesList();
     	while(!isStopped()) {
     		try {
     			if ( (command = in.read()) != 0)

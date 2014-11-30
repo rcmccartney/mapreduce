@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.io.File;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -143,6 +144,36 @@ public class Worker implements Runnable {
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
     
+    /*Function to send filesList to Master
+     * Path of default directory is in Utils
+     */
+    public void sendFilesList(String path){
+    	try{
+	    	File folder = new File(path);
+	    	if(folder.isDirectory()){
+		    	File[] filesList = folder.listFiles();
+		    	try{
+		    		out.write(filesList.length);
+		    		for(int i=0;i<filesList.length;i++){
+		    			out.write(filesList[i].getName().getBytes());
+		    		}
+		    	}catch(Exception e){
+		    		System.out.println("Error in sending fileList to Master");
+		    		e.printStackTrace();
+		    		e.toString();
+		    	}
+	    	}
+	    	else{
+	    		out.write(0);
+	    	}
+    	}catch (Exception e){
+    		System.out.println("Error in reading contents of folder");
+    		e.toString();
+    	}
+    	
+    	
+    }
+    
     public void receive(int command) {
 
 		switch(command) {
@@ -157,6 +188,9 @@ public class Worker implements Runnable {
 			receiveMRFile(); 
 			// TODO need to create a new Job here with this Mapper that can use the Generics properly!!
 			new Job<>(this, compileAndLoadMRFile(), "here", "there");
+			break;
+		case mapreduce.Utils.REQ_LIST:
+			sendFilesList(mapreduce.Utils.filePath);
 			break;
 		default:
 			System.err.println("Unrecognized command: " + command);
