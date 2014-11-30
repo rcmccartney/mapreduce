@@ -33,15 +33,6 @@ public class Job<K, V> {
 		// now the output map has been populated, so it needs to be shuffled and sorted 
 		// first notify Master of the keys you have at this node, and their sizes
 		sendAllKeysToMaster();
-
-		
-		
-		// TODO this is testing code to be removed, ignores all P2P traffic
-		for(K key: mapOutput.keySet()) {
-			//worker.writeMaster("k" + " " + key + " " + output.get(key).size());
-			System.out.println("HAVE THESE KEYS: " + key + " Value: " + mapOutput.get(key));
-		}
-		this.reduce();
 	}
 	
 	public void reduce() {
@@ -104,8 +95,15 @@ public class Job<K, V> {
 	}
 	
 	public void sendAllKeysToMaster() {
-		worker.writeMaster(Utils.W2M_KEY);
-		worker.writeMaster(Utils.gson.toJson(mapOutput.keySet())+'\n');
+		byte[] data;
+		for (K key: mapOutput.keySet()) {
+			worker.writeMaster(Utils.W2M_KEY);
+			data = Utils.concat(mr.getBytes(key), 
+					Utils.intToByteArray(mapOutput.get(key).size()));
+			worker.writeMaster(data);
+		}
+		worker.writeMaster(Utils.W2M_KEY_COMPLETE);
+		System.out.println("Keys transferred to Master");
 	}
 	
 	public void sendResults() {

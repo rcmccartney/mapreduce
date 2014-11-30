@@ -1,6 +1,7 @@
 package mapreduce;
 
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -108,10 +109,15 @@ public class WorkerConnection extends Thread {
 			master.setMRJob(name, true);
 			break;
 		case Utils.W2M_KEY:
-			receiveWorkerKeys();
+			System.out.println("HERE");
+			master.mj.receiveWorkerKey(readBytes(), this.id);
+			System.out.println("HERE3");
+			break;
+		case Utils.W2M_KEY_COMPLETE:
+			master.mj.setKeyTransferComplete(this.id);
 			break;
 		case Utils.W2M_RESULTS:
-			receiveWorkerResults();
+			master.mj.receiveWorkerResults(readBytes());
 			break;
 		default:
 			System.err.println("Invalid command received on WorkerConnection");
@@ -127,7 +133,7 @@ public class WorkerConnection extends Thread {
 		writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
 	}
     
-	private String receiveFileFromClient(){
+	private String receiveFileFromClient() {
 		System.err.print("...Receiving MR job from Client node: ");
 		try{
 			// the first thing sent will be the filename
@@ -154,14 +160,21 @@ public class WorkerConnection extends Thread {
 			return null;
 		}
 	}
-    
-    private void receiveWorkerKeys() {
-		// TODO receive this workers keys and give to Master to compile
-	}
-    
-    private void receiveWorkerResults() {
-		// TODO Auto-generated method stub
-		
+	
+	public byte[] readBytes() {
+		try{		
+			byte[] mybytearray = new byte[1024];
+			int bytesRead;
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			while ((bytesRead = in.read(mybytearray, 0, mybytearray.length)) != -1) {
+				bos.write(mybytearray, 0, bytesRead);
+			}
+			bos.flush();
+			return bos.toByteArray();
+		} catch (IOException e) {
+			System.err.println("Exception while receiving file from Client: " + e);
+			return null;
+		}
 	}
 
 	/**

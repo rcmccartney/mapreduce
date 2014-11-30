@@ -27,7 +27,7 @@ public class Master extends Thread {
 	protected int jobs = 0;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
-	protected MasterJob<?, ?> mj = null;
+	public MasterJob<?, ?> mj = null;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();

@@ -19,6 +19,7 @@ public class Utils {
 			M2W_UPLOAD = 'W',
 			MR_QUIT = 'Q',
 			W2M_KEY = 'L', 
+			W2M_KEY_COMPLETE = 'Z', 
 			M2W_KEYASSIGN = 'M',
 			W2W_KEY_TRANSFER = 'K',
 			W2M_RESULTS = 'R';
@@ -41,5 +42,20 @@ public class Utils {
 		System.arraycopy(a, 0, c, 0, aLen);
 		System.arraycopy(b, 0, c, aLen, bLen);
 		return c;
+	}
+	
+	public static final byte[] intToByteArray(int value) { 
+		return new byte[] { 
+				(byte)(value >>> 24), 
+				(byte)(value >>> 16), 
+				(byte)(value >>> 8), 
+				(byte)value}; 
+	}
+	
+	public static int byteArrayToInt(byte [] b) { 
+		return  (b[0] << 24) + 
+				((b[1] & 0xFF) << 16) + 
+				((b[2] & 0xFF) << 8) + 
+				(b[3] & 0xFF); 
 	}
 }

@@ -125,7 +125,7 @@ public class Worker implements Runnable {
     
 	private String receiveMRFile(){
 		System.out.print("Worker received new MR job: ");
-		try{
+		try {
 			// the first thing sent will be the filename
 			int f;
 			String name = "";
