@@ -32,8 +32,7 @@ public class Job<K, V> {
 
 		// now the output map has been populated, so it needs to be shuffled and sorted 
 		// first notify Master of the keys you have at this node, and their sizes
-		worker.writeMaster(Utils.W2M_KEY);
-		sendKeysToMaster();
+		sendAllKeysToMaster();
 
 		
 		
@@ -104,8 +103,9 @@ public class Job<K, V> {
 		
 	}
 	
-	public void sendKeysToMaster() {
-		// TODO let master know what keys you have here
+	public void sendAllKeysToMaster() {
+		worker.writeMaster(Utils.W2M_KEY);
+		worker.writeMaster(Utils.gson.toJson(mapOutput.keySet())+'\n');
 	}
 	
 	public void sendResults() {

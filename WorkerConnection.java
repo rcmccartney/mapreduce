@@ -80,7 +80,7 @@ public class WorkerConnection extends Thread {
     		outQueue.shutdown();
     		if (!clientSocket.isClosed()) {
     			// don't use writeWorker since that will call close recursively
-    			out.write(mapreduce.Utils.MR_QUIT); 
+    			out.write(Utils.MR_QUIT); 
     			out.flush();
     			clientSocket.close();
     		}
@@ -105,7 +105,7 @@ public class WorkerConnection extends Thread {
 		case Utils.C2M_UPLOAD:	
 			String name = receiveFileFromClient();
 			closeConnection();
-			master.sendMRFileToWorkers(name, true);
+			master.setMRJob(name, true);
 			break;
 		case Utils.W2M_KEY:
 			receiveWorkerKeys();
@@ -123,7 +123,7 @@ public class WorkerConnection extends Thread {
 		MRFileName = name;
 		byteArrOfMRFile = bArr;
 		//notify client of pending MR transmission and wait for response
-		writeWorker(mapreduce.Utils.M2W_UPLOAD);
+		writeWorker(Utils.M2W_UPLOAD);
 		writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
 	}
     

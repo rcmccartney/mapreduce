@@ -15,7 +15,7 @@ public class Client extends Worker {
 		try {
 			Path file = Paths.get(filePath);
 			byte[] filedata = Files.readAllBytes(file);
-			writeMaster(mapreduce.Utils.C2M_UPLOAD);
+			writeMaster(Utils.C2M_UPLOAD);
     		writeMaster(file.getFileName().toString()+'\n', filedata);
 			System.out.println("Java file uploaded to Master server.");
     		closeConnection();
@@ -26,6 +26,6 @@ public class Client extends Worker {
 	}
 		
 	public static void main(String[] args) {
-		new Client(args).sendFile("C:\\Users\\mccar_000\\Desktop\\MR.java"); //send a file from Desktop to the Master
+		new Client(args).sendFile("C:\\Users\\mccar_000\\Desktop\\MRTest.java"); //send a file from Desktop to the Master
 	}
 }

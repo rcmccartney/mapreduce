@@ -14,6 +14,11 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Scanner;
 
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+
+import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
+
 public class Master extends Thread {
 
 	protected ServerSocket serverSocket;
@@ -22,6 +27,7 @@ public class Master extends Thread {
 	protected int jobs = 0;
 	protected static int id_counter = 0;
 	protected Collection<WorkerConnection> workerQueue; 
+	protected MasterJob<?, ?> mj = null;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
@@ -43,25 +49,47 @@ public class Master extends Thread {
     // i.e multiple clients trying to submit MRFiles
     // this method is for sending file received by a client
     // use deleteAfter if this is a temporary file sent from client to Master
-	public void sendMRFileToWorkers(String filename, boolean deleteAfter){
+	public void setMRJob(String filename, boolean deleteAfter){
 
 		byte[] byteArrOfFile = null;
 		try {
-			Path myFile = Paths.get(filename);
-			byteArrOfFile = Files.readAllBytes(myFile);
-			if (deleteAfter)
-				Files.delete(myFile);
-			synchronized (this) {
-				for (WorkerConnection wc : workerQueue)
-					if(!wc.isStopped())
-						wc.sendFile(myFile.getFileName().toString(), byteArrOfFile);
+			// TODO when jobs is already > 0 store this job for later
+			if (jobs == 0) {
+				String className = compile(filename);
+				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
+				Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
+				mj = new MasterJob<>(mr);
+				Path myFile = Paths.get(className + ".class");
+				byteArrOfFile = Files.readAllBytes(myFile);
+				Files.delete(Paths.get(className + ".class"));
+				if (deleteAfter)
+					Files.delete(Paths.get(filename));
+				synchronized (this) {
+					for (WorkerConnection wc : workerQueue)
+						if(!wc.isStopped())
+							wc.sendFile(myFile.getFileName().toString(), byteArrOfFile);
+				}
+				System.err.println("...Finished sending MR job to worker nodes");
 			}
-			System.err.println("...Finished sending MR job to worker nodes");
-		} catch (IOException e) {
+		} catch (Exception e) {
 			System.err.println("Error reading MR file in Master node");
 			return;
 		}
 	}
+	
+	protected String compile(String filename){
+		try {	
+			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
+			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
+				throw new CompilerException("Error: no compiler set for MR file");
+			int compilationResult = compiler.run(null, null, null, filename);  
+			System.err.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
+			return filename.split("\\.")[0];  // class name is before ".java"
+		} catch (Exception e) {
+			System.err.println("Exception loading or compiling the File: " + e);
+			return null;
+		}
+	} 			
     
     private synchronized int getJobs() {
     	return jobs;
@@ -185,12 +213,12 @@ public class Master extends Thread {
 			}
 			else if (line[0].equalsIgnoreCase("ld")) {
 				if (line.length > 1) {
-					sendMRFileToWorkers(line[1], false);
+					setMRJob(line[1], false);
 				}
 				else {
 					System.out.printf("Enter filename:%n> ");
 					command = in.nextLine().trim();
-					sendMRFileToWorkers(command, false);
+					setMRJob(command, false);
 				}
 			}
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication

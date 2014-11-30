@@ -15,11 +15,6 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
-
-import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
-
 /**
  * This class parses command-line input in order to register client as a worker in a 
  * MapReduce architecture.  Once connected, the nodes send heartbeats to each other 
@@ -115,22 +110,12 @@ public class Worker implements Runnable {
     }
     
 	// TODO add it so User can send already compiled classes over byte stream
-	private Mapper<?, ?> compileAndLoadMRFile(String filename){
-		
+	private Mapper<?, ?> loadMRFile(String classfile){		
 		try {	
-			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
-			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
-				throw new CompilerException("Error: no compiler set for MR file");
-			// zero means compile success
-			int compilationResult = compiler.run(null, null, null, filename); 
-			System.out.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
-			// Class name is the filename before '.java'
-			String className = filename.split("\\.")[0];
-			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
+			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(classfile.split("\\.")[0]); 
 			Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
 			// clean up the files you created
-			Files.delete(Paths.get(filename));
-			Files.delete(Paths.get(className + ".class"));
+			Files.delete(Paths.get(classfile));
 			return mr;
 		} catch (Exception e) {
 			System.err.println("Exception loading or compiling the File: " + e);
@@ -179,7 +164,7 @@ public class Worker implements Runnable {
 			break;
 		case Utils.M2W_UPLOAD:
 			// TODO filesystem that can take in actual file names instead of "here", "there"
-			Mapper<?, ?> mr = compileAndLoadMRFile(receiveMRFile());
+			Mapper<?, ?> mr = loadMRFile(receiveMRFile());
 			if (mr != null) {
 				currentJob = new Job<>(this, mr, "here", "there");
 				currentJob.begin();
