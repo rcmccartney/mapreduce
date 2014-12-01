@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.LinkedList;
@@ -48,6 +49,21 @@ public class WorkerConnection extends Thread {
 					System.err.printf("Error writing to Worker %d: closing connection%n", id);
 					closeConnection();
 				}
+			}
+    	});
+    }
+    
+    public void writeObjToWorker(final Object obj) {
+    	outQueue.execute(new Runnable() {
+			public void run() {
+		    	try {
+		    		ObjectOutputStream objStream = new ObjectOutputStream(out);
+		    		objStream.writeObject(obj);
+		    		objStream.flush();
+		    	} catch (IOException e) {
+		    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+		    		closeConnection();
+		    	}				
 			}
     	});
     }
@@ -122,6 +138,16 @@ public class WorkerConnection extends Thread {
 			break;
 		case Utils.W2M_KEY_COMPLETE:
 			master.mj.setKeyTransferComplete(this.id);
+			break;
+		case Utils.W2M_KEYSHUFFLED:
+			master.mj.wShuffleCount++;
+			if(master.mj.wShuffleCount == master.workerQueue.size())
+				new Thread(new Runnable(){
+					public void run(){
+						master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
+					}
+					
+				}).start();
 			break;
 		case Utils.W2M_RESULTS:
 			master.mj.receiveWorkerResults(readBytes());

@@ -40,6 +40,7 @@ public class Worker implements Runnable {
 	//stopped is used by multiple threads, must be synchronized
 	protected boolean stopped = false;
 	protected Job<?, ?> currentJob;
+	protected WorkerP2P wP2P;
 	protected String basePath;
 	protected File baseDir;
 	// TODO job queue 
@@ -60,6 +61,7 @@ public class Worker implements Runnable {
     		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
+            wP2P = new WorkerP2P(0, this); // use port + 1 for Wp2p
             id = in.read();  //first thing sent is worker ID
             basePath = Utils.basePath + File.separator + id;
         	baseDir = new File(basePath);
@@ -216,6 +218,12 @@ public class Worker implements Runnable {
 		case Utils.M2W_KEYASSIGN:	
 			currentJob.receiveKeyAssignments();
 			break;
+		case Utils.M2W_COORD_KEYS:	
+			currentJob.receiveKeyAssignments();
+			break;
+		case Utils.M2W_BEGIN_REDUCE:
+			currentJob.reduce();
+			break;	
 		case Utils.M2W_MR_UPLOAD:
 			// TODO filesystem that can take in actual file names instead of "here", "there"
 			System.out.print("Worker received new MR job: ");

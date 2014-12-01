@@ -23,7 +23,11 @@ public class Utils {
 			W2M_RESULTS = 'R',
 			M2W_REQ_LIST = 'F',
 			M2W_REQ_LIST_OKAY = 'F',
-			M2W_FILE = 'A';
+			M2W_FILE = 'A',
+			M2W_COORD_KEYS = 10,
+			W2W_KEY_TRANSFER_OKAY = 11,
+			W2M_KEYSHUFFLED = 12,
+			M2W_BEGIN_REDUCE = 12;
 
 	
 	//Path for flat directory, where each worker stores files
