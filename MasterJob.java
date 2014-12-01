@@ -2,7 +2,6 @@ package mapreduce;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,12 +35,18 @@ public class MasterJob<K extends Serializable, V> {
 		System.arraycopy(barr, barr.length-4, bInt, 0, 4);
 		K key = currentJob.readBytes(keyArr);
 		aggregate(key, Utils.byteArrayToInt(bInt)); 
-		
+		storeKeyToWorker(key, id);
+	}
+	
+	public void storeKeyToWorker(K key, int workerID) {
 		//aggregate key_workers_map
 		if(key_workers_map.containsKey(key))
-			key_workers_map.get(key).add(id); // append worker ID its corresponding key mapping
-		else 
-			key_workers_map.put(key, Arrays.asList(id));
+			key_workers_map.get(key).add(workerID); // append worker ID its corresponding key mapping
+		else {
+			List<Integer> l = new ArrayList<>();
+			l.add(workerID);
+			key_workers_map.put(key, l);
+		}
 	}
 	
 	public void aggregate(K key, int count) {
