@@ -64,6 +64,7 @@ public class MasterJob<K extends Serializable, V> {
 		//TODO: change wCount to compare with current actual # of workers on this job 
 		++wCount;
 		if (wCount == master.workerQueue.size()) { // master now has all the keys from the workers
+			System.out.println("coordinateKeys");
 			coordinateKeysOnWorkers();
 		}
 	}
@@ -85,7 +86,7 @@ public class MasterJob<K extends Serializable, V> {
 		for (K key : key_workers_map.keySet()){
 			Object[] transferMessage = new Object[]{key,  //contains key, ipaddress and port to send 
 					master.workerQueue.get(wQIdx).clientSocket.getInetAddress().getHostAddress(),
-					master.workerIDAndPorts.get(master.workerQueue.get(wQIdx).getId())}; 
+					master.workerIDAndPorts.get(master.workerQueue.get(wQIdx).id)}; 
 			for (Integer wId : key_workers_map.get(key)){
 				if (worker_messages_map.containsKey(wId)) {
 					worker_messages_map.get(wId).add(transferMessage);

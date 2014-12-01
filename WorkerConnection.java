@@ -145,10 +145,12 @@ public class WorkerConnection extends Thread {
 			master.mj.receiveWorkerKey(readBytes(), this.id);
 			break;
 		case Utils.W2M_KEY_COMPLETE:
+			System.out.println("Transfer complete " + id);
 			master.mj.setKeyTransferComplete(this.id);
 			break;
 		case Utils.W2M_KEYSHUFFLED:
 			master.mj.wShuffleCount++;
+			System.out.println("Suffle: " + master.mj.wShuffleCount);
 			if(master.mj.wShuffleCount == master.workerQueue.size())
 				master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
 			break;
@@ -202,6 +204,7 @@ public class WorkerConnection extends Thread {
 	 */
 	private List<String> getFilesList() {
 		try {
+			System.err.println("HERE!");
 			int length = in.read();  // TODO won't work for more than 1 byte of files
 			List<String> list = new LinkedList<>();
 			byte[] mybytearray = new byte[1024];

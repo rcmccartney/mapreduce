@@ -96,16 +96,15 @@ public class Job<K extends Serializable, V> {
 	
 	@SuppressWarnings("unchecked")
 	public void receiveKeyAssignments() {
-
 		try {
 			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
 			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
-			System.out.println("Received TMsgs: " + keyTransferMsgs);
 			for (Object[] o : keyTransferMsgs) {
 				K k = (K) o[0];
 				String peerAddress = (String) o[1]; 
 				Integer peerPort = (Integer) o[2]; 
 				List<V> v = mapOutput.get(k);
+				System.out.println("key: " + k + " peerAddress: " + peerAddress + " peerPort " + peerPort);
 				mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
 				worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
 			}

@@ -103,8 +103,8 @@ public class Master extends Thread {
 				mj = new MasterJob<>(mr,this);
 				Path myFile = Paths.get(className + ".class");
 				byteArrOfFile = Files.readAllBytes(myFile);
-				Files.delete(Paths.get(className + ".class"));
-				Files.delete(Paths.get(f2.getName()));
+				//Files.delete(Paths.get(className + ".class"));
+				//Files.delete(Paths.get(f2.getName()));
 				synchronized (this) {
 					for (WorkerConnection wc : workerQueue)
 						if(!wc.isStopped())

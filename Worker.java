@@ -109,13 +109,7 @@ public class Worker implements Runnable {
     }
 
     public void writeMaster(int arg) {
-    	try {
-    		out.write(arg);
-    		out.flush();
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
+    	writeMaster(Utils.intToByteArray(arg)); 
     }
     
     public synchronized boolean isStopped() {
