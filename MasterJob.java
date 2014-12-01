@@ -1,5 +1,7 @@
 package mapreduce;
 
+import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,14 +85,16 @@ public class MasterJob<K extends Serializable, V> {
 		}
 		int kIdx = 0, wQIdx = 0;// WorkerConnection currWoker = master.workerQueue.get(0); 
 		for (K key : key_workers_map.keySet()){
-			Object[] transferMessage = new Object[]{key,  //contains key, ipaddress and port to send 
+			Object[] transferMessage = new Object[]
+					{key,  //contains key, ipaddress and port to send the key to
 					master.workerQueue.get(wQIdx).clientSocket.getInetAddress().getHostAddress(),
-					master.workerIDAndPorts.get(master.workerQueue.get(wQIdx).getId())}; 
+					master.workerQueue.get(wQIdx).clientSocket.getPort()}; //TODO: change to wp2p port
 			for (Integer wId : key_workers_map.get(key)){
-				if (worker_messages_map.containsKey(wId)) {
+				if(wId == master.workerQueue.get(wQIdx).id)//if its the worker to which the key's assigned, then skip
+					continue;
+				if(worker_messages_map.containsKey(wId)){
 					worker_messages_map.get(wId).add(transferMessage);
-				} 
-				else {
+				} else {
 					List<Object[]> messages = new ArrayList<Object[]>();
 					messages.add(transferMessage);
 					worker_messages_map.put(wId, messages);

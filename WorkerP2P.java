@@ -27,7 +27,7 @@ public class WorkerP2P extends Thread {
     
     public WorkerP2P(int port, Worker worker) throws IOException {
     	this.exec = Executors.newCachedThreadPool();
-    	this.port = port;   // == -1 ? Utils.DEF_WP2P_PORT: port;
+    	this.port = port == -1 ? Utils.DEF_WP2P_PORT: port;
     	workerServerSocket = new ServerSocket(this.port);
     	this.worker = worker;
     	this.setDaemon(true);
