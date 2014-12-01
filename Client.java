@@ -34,6 +34,6 @@ public class Client extends Worker {
 	public static void main(String[] args) {
 		//send a file from Desktop to the Master
 		String[] clientArgs = { "-port", ""+Utils.DEF_CLIENT_PORT };
-		new Client(clientArgs).sendJob("C:\\Users\\mccar_000\\Desktop\\MRTest.java", "here", "there"); 
+		new Client(clientArgs).sendJob("C:\\Users\\mccar_000\\Desktop\\MRTest4.java", "here", "there"); 
 	}
 }

@@ -7,8 +7,6 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class WorkerConnection extends Thread {
 
@@ -18,7 +16,6 @@ public class WorkerConnection extends Thread {
 	protected OutputStream out;
 	protected boolean stopped = false;
 	protected Master master;
-	protected ExecutorService outQueue;
 	protected byte[] byteArrOfMRFile;
 	protected String MRFileName; 
 
@@ -26,7 +23,6 @@ public class WorkerConnection extends Thread {
         this.clientSocket = clientSocket;
         out = clientSocket.getOutputStream();
         in = clientSocket.getInputStream();
-        outQueue = Executors.newCachedThreadPool();
         this.master = master;
         this.id = id;
         // first tell the worker his ID
@@ -36,68 +32,54 @@ public class WorkerConnection extends Thread {
     }
     
     public void writeWorker(final String arg, final byte... barg) {
-    	outQueue.execute(new Runnable() {
-			public void run() {
-				try {
-					byte[] barr = Utils.concat(arg.getBytes(), barg);
-					out.write(barr);
-					out.flush();
-				} catch (IOException e) {
-					System.err.printf("Error writing to Worker %d: closing connection%n", id);
-					closeConnection();
-				}
-			}
-    	});
+    	try {
+    		byte[] barr = Utils.concat(arg.getBytes(), barg);
+    		out.write(barr);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+    		closeConnection();
+    	}
     }
+
     
     public void writeObjToWorker(final Object obj) {
-    	outQueue.execute(new Runnable() {
-			public void run() {
-		    	try {
-		    		ObjectOutputStream objStream = new ObjectOutputStream(out);
-		    		objStream.writeObject(obj);
-		    		objStream.flush();
-		    	} catch (IOException e) {
-		    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
-		    		closeConnection();
-		    	}				
-			}
-    	});
+    	try {
+    		ObjectOutputStream objStream = new ObjectOutputStream(out);
+    		objStream.writeObject(obj);
+    		objStream.flush();
+    	} catch (IOException e) {
+    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+    		closeConnection();
+    	}				
     }
+
     
     public void writeWorker(final String arg) {
-    	outQueue.execute(new Runnable() {
-			public void run() {
-		    	try {
-		    		out.write(arg.getBytes());
-		    		out.flush();
-		    	} catch (IOException e) {
-		    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
-		    		closeConnection();
-		    	}				
-			}
-    	});
+    	try {
+    		out.write(arg.getBytes());
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+    		closeConnection();
+    	}				
     }
+
     
     public void writeWorker(final byte... arg) {
-    	outQueue.execute(new Runnable() {
-			public void run() {
-		    	try {
-		    		out.write(arg);
-		    		out.flush();
-		    	} catch (IOException e) {
-		    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
-		    		closeConnection();
-		    	}				
-			}
-    	});
+    	try {
+    		out.write(arg);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+    		closeConnection();
+    	}				
     }
     
     public synchronized void closeConnection() {
     	stopped = true;
     	master.remove(id);
     	try {
-    		outQueue.shutdown();
     		if (!clientSocket.isClosed()) {
     			// don't use writeWorker since that will call close recursively
     			out.write(Utils.MR_QUIT); 
