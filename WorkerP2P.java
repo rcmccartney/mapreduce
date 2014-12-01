@@ -4,6 +4,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -17,20 +19,21 @@ import java.util.concurrent.Executors;
  * This class' instance is always listening at the port specified for other W_P2P peers  
  *
  */
-public class WorkerP2P<K,V> extends Thread {
+public class WorkerP2P extends Thread {
  
     //protected DatagramSocket socket = null;
 	protected ServerSocket workerServerSocket;
-    protected Job job;
+    //protected Job job;
+	protected Worker worker;
     protected int port; //This is the port used at src and dest. Since all W_P2P communications assume this port
     protected ExecutorService exec; //Thread pool to use to send data out asynchronously
     protected boolean stopRun = false;
     
-    public WorkerP2P(int port, Job	job) throws IOException {
+    public WorkerP2P(int port, Worker worker) throws IOException {
     	this.exec = Executors.newCachedThreadPool();
     	this.port = port == -1 ? Utils.DEF_WP2P_PORT: port;
     	workerServerSocket = new ServerSocket(this.port);
-    	this.job = job;
+    	this.worker = worker;
     	this.start();
     }
  
@@ -44,18 +47,24 @@ public class WorkerP2P<K,V> extends Thread {
 				Socket p2pSocket = workerServerSocket.accept();
 				InputStream in = p2pSocket.getInputStream();
 				OutputStream out = p2pSocket.getOutputStream();
-				BufferedReader br = new BufferedReader(new InputStreamReader(in));
+				//BufferedReader br = new BufferedReader(new InputStreamReader(in));
 
 				byte cmd = (byte)in.read(); //commands are one byte
 				switch(cmd){
 					case Utils.W2W_KEY_TRANSFER:
+						//Object[] objArr = Utils.gson.fromJson(br.readLine(), Object[].class);
+						ObjectInputStream objInStream = new ObjectInputStream(in);
+						Object[] objArr = (Object[])objInStream.readObject();
+						objInStream = null;
+						
 						out.write(Utils.W2W_KEY_TRANSFER_OKAY); out.flush();
-						Object[] objArr = Utils.gson.fromJson(br.readLine(), Object[].class);
-						K key = (K)objArr[0];
-						List<V> valList = (List<V>) objArr[1];
+						
+						worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
+						//K key = (K)objArr[0];
+						//List<V> valList = (List<V>) objArr[1];
 						//System.out.println("Recieved from Worker: ");
-						System.out.println("Key: " + key);
-						System.out.println("List<Value>: " + valList);
+						//System.out.println("Key: " + objArr[0]);
+						//System.out.println("List<Value>: " + objArr[1]);
 						break;
 					
 					//TODO: may be Worker can send this message when done sending all the keys destined for this worker
@@ -69,7 +78,7 @@ public class WorkerP2P<K,V> extends Thread {
 				//System.out.println("received: " + line);
 				p2pSocket.close();
 			}
-		} catch (IOException e) {
+		} catch (IOException | ClassNotFoundException e) {
 			if(stopRun) return; //cuz if we intended to stop the server
 			System.out.println("IOException in RecNotifThread:run()");
 			System.out.println(e);
@@ -85,23 +94,29 @@ public class WorkerP2P<K,V> extends Thread {
 	 * @param peerAddress
 	 * @param port
 	 */
-	public void send(final K key, final List<V> ls, final String peerAddress, final int port){
+	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
     	// TODO the msg is larger than the receive buffer size
-    	exec.execute(new Runnable() {
-			public void run() {
+    	//exec.execute(new Runnable() {
+			//public void run() {
 				//Used JSON instead of serializaton cuz its lightweight and easier
-				String jStr = Utils.gson.toJson(new Object[]{key, ls});
-				System.out.println("JSON String: " + jStr);
+				//String jStr = Utils.gson.toJson(new Object[]{key, ls});
+				//System.out.println("JSON String: " + jStr);
 				try {
 					Socket socket = new Socket(peerAddress, port);
 					OutputStream out = socket.getOutputStream();
 					InputStream in = socket.getInputStream();
-					
 					out.write(Utils.W2W_KEY_TRANSFER); out.flush();
-					if (in.read() != Utils.W2W_KEY_TRANSFER_OKAY) 
-						System.err.println("Invalid response from Worker peer");
-					out.write((jStr+"\n").getBytes());
-
+					
+					ObjectOutputStream objOutStream = new ObjectOutputStream(out);
+					objOutStream.writeObject(new Object[]{key, values});
+					out.flush();
+					
+					if (in.read() != Utils.W2W_KEY_TRANSFER_OKAY)
+						System.err.println("Invalid response received from Worker at " + peerAddress + "; port: " + port);
+					
+					out.close();
+					//out.write((jStr+"\n").getBytes());
+					
 					socket.close();
 				} catch (UnknownHostException e) {
 					// TODO Auto-generated catch block
@@ -111,8 +126,8 @@ public class WorkerP2P<K,V> extends Thread {
 					e.printStackTrace();
 				}
 				
-			}
-		});
+			//}
+		//});
     }
 	
 	/**

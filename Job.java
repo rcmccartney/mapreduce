@@ -1,6 +1,8 @@
 package mapreduce;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -81,6 +83,21 @@ public class Job<K extends Serializable, V> {
 			emit(key, tmp.get(key));
 	}
 	
+	public void receiveKVAndAggregate (Object k, Object v){
+		//wMinusOneCount++;
+		K key = (K)k; 
+		List<V> valList = (List<V>) v;
+		if(mapOutput.containsKey(key)){
+			mapOutput.get(key).addAll(valList);
+		} else {
+			mapOutput.put(key, valList);
+		}
+		//System.out.println("Recieved from Worker: ");
+		System.out.println("Key: " + key);
+		System.out.println("Key's: type" + key.getClass().getName());
+		System.out.println("List<Value>: " + valList); 
+	}
+	
 	public void receiveKeyAssignments() {
 		// need key, ip address, and port from Master to fwd your values there
 		// K key = mr.parse("F");
@@ -92,7 +109,28 @@ public class Job<K extends Serializable, V> {
 		
 		//then once P2P is fished call this.reduce()
 		// so output has all the key - list of Values
-		
+		try {
+			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
+			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
+			System.out.println("Received TMsgs: " + keyTransferMsgs);
+			//objInStream.close();
+			//List<Object[]> msgList = (List<Object[]>)Utils.gson.fromJson(br.readLine(), List.class);
+			for (Object[] o : keyTransferMsgs){
+				K k = (K)o[0];
+				String peerAddress = (String) o[1]; 
+				Integer peerPort = (Integer) o[2]; //testing on same machine
+				List<V> v = mapOutput.get(k);
+				
+				mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
+
+				worker.wP2P.send(k, v, peerAddress, peerPort+1); //sends key and its value list as object[]
+			}
+			//A worker sends this message, so that master can keep track of workers who are ready for reduce
+			worker.writeMaster(Utils.W2M_KEYSHUFFLED);   
+		} catch (IOException | ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	public void sendAllKeysToMaster() {

@@ -30,7 +30,7 @@ public class Master extends Thread {
 	protected boolean stopped = false;
 	protected int jobs = 0;
 	protected static int id_counter = 0;
-	protected Collection<WorkerConnection> workerQueue; 
+	protected List<WorkerConnection> workerQueue; 
 	// Hashtable is synchronized 
 	private Hashtable<Integer, List<String>> fileHashTable;
 	
@@ -46,7 +46,7 @@ public class Master extends Thread {
         return stopped;
     }
     
-    public synchronized void writeAllWorkers(String message){
+    public synchronized void writeAllWorkers(byte... message){
     	for (WorkerConnection wc : workerQueue)
     		wc.writeWorker(message);
     }
@@ -94,7 +94,7 @@ public class Master extends Thread {
 				String className = compile(filename);
 				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
 				Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
-				mj = new MasterJob<>(mr);
+				mj = new MasterJob<>(mr,this);
 				Path myFile = Paths.get(className + ".class");
 				byteArrOfFile = Files.readAllBytes(myFile);
 				Files.delete(Paths.get(className + ".class"));
@@ -126,6 +126,16 @@ public class Master extends Thread {
 			return null;
 		}
 	} 			
+	
+	public WorkerConnection getWCwithId(int id){
+    	// lock queue when iterating, assumes other threads lock on workerQueue too before using it
+    	synchronized (workerQueue) { 
+    		for (WorkerConnection wc : workerQueue)
+        		if (wc.id == id)
+        			return wc;
+        	return null;
+		}
+    }
     
     private synchronized int getJobs() {
     	return jobs;
@@ -292,7 +302,7 @@ public class Master extends Thread {
 			}
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
 				try {
-					new WorkerP2P<String, String>(40013, null).send("Kumar", 
+					new WorkerP2P(40013, null).send("Kumar", 
 							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.DEF_WP2P_PORT);
 				} catch (IOException e) {
 					e.printStackTrace();
