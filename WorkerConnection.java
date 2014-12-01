@@ -132,7 +132,10 @@ public class WorkerConnection extends Thread {
 			master.mj.receiveWorkerKey(in, this.id);
 			break;
 		case Utils.W2M_KEY_COMPLETE:
-			master.mj.setKeyTransferComplete(this.id);
+			//TODO: change wCount to compare with current actual # of workers on this job 
+			master.mj.wCount++;
+			if (master.mj.wCount == master.workerQueue.size()) // master now has all the keys from the workers
+				master.mj.coordinateKeysOnWorkers();
 			break;
 		case Utils.W2M_KEYSHUFFLED:
 			master.mj.wShuffleCount++;

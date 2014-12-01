@@ -64,7 +64,7 @@ public class ClientListener extends Thread {
 				while (cont) {
 					int cmd;
 					if ((cmd = in.read()) != 0) { //commands are one byte
-						switch(cmd){
+						switch(cmd) {
 						case Utils.C2M_UPLOAD:	
 							MRFileName = receiveFileFromClient();
 							break;
@@ -74,7 +74,8 @@ public class ClientListener extends Thread {
 							cont = false;
 							break;
 						default:
-							System.out.println("invalid command received at WP2P");
+							System.out.println("invalid command received at Client");
+							cont = false;
 							break;
 						}
 					}

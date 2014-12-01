@@ -31,7 +31,8 @@ public class Utils {
 			M2W_BEGIN_REDUCE = 15,
 			W2M_WP2P_PORT = 16,
 			W2M_REDUCEDKV = 17,
-			W2M_JOBDONE = 18;
+			W2M_JOBDONE = 18,
+			M2W_DATA_USAGE = 19;
 
 	
 	//Path for flat directory, where each worker stores files

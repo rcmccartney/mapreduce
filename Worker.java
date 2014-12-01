@@ -20,6 +20,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * This class parses command-line input in order to register client as a worker in a 
@@ -60,15 +62,16 @@ public class Worker implements Runnable {
     		if (hostName.length() == 0) 
     			hostName = InetAddress.getLocalHost().getHostAddress();
     		socket = new Socket(hostName, port);
-    		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
             id = in.read();  //first thing sent is worker ID
+    		System.out.println("Worker " + id + ": " + socket);
             // using port + 1 for Wp2p ensures it is unique for multiple instances
             this.client = client;
             if (!client) {
             	wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this); 
-            	writeMaster(Utils.W2M_WP2P_PORT); 
+            	writeMaster(Utils.W2M_WP2P_PORT);
+            	try { Thread.sleep(10); } catch (Exception e) {}
             	writeMaster(Utils.intToByteArray(wP2P.port)); 
             	basePath = Utils.basePath + File.separator + id;
             	baseDir = new File(basePath);
@@ -113,11 +116,17 @@ public class Worker implements Runnable {
     	}
     }
 
+    // this was messing up writing a single byte
     public void writeMaster(int arg) {
-    	byte[] barr = Utils.intToByteArray(arg);
-    	writeMaster(barr);
+    	try {
+    		out.write(arg);
+    		out.flush();
+    	} catch (IOException e) {
+    		System.err.println("Error writing to Master: closing connection.");
+    		this.closeConnection();
+    	}
     }
-    
+   
     public void writeObjToMaster(final Object obj) {
     	try {
     		ObjectOutputStream objStream = new ObjectOutputStream(out);
@@ -237,18 +246,19 @@ public class Worker implements Runnable {
 			currentJob.reduce();
 			break;	
 		case Utils.M2W_MR_UPLOAD:
-			// TODO filesystem that can take in actual file names instead of "here", "there"
+			// TODO filesystem that can take in actual file names instead of using all data there
 			System.out.print("Worker received new MR job: ");
 			Mapper<?, ?> mr = loadMRFile(receiveFile());
 			if (mr != null) {
-				currentJob = new Job<>(this, mr, "here", "there");
+				ArrayList<String> names = new ArrayList<String>(Arrays.asList(baseDir.list()));
+				currentJob = new Job<>(this, mr, names);
 				currentJob.begin();
 			}
 			break;	
 		case Utils.M2W_FILE:
 			System.out.print("Worker received new file: ");
 			receiveFile();
-			// dont use break so Worker updates Master on his new file
+			break;
 		case Utils.M2W_REQ_LIST:  // master is requesting file list
 			writeMaster(Utils.M2W_REQ_LIST_OKAY);
 			sendFilesList(baseDir);

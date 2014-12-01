@@ -51,15 +51,6 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 			keyCounts.put(key, count);
 	}
 
-	public void setKeyTransferComplete(int id) {
-		
-		//TODO: change wCount to compare with current actual # of workers on this job 
-		++wCount;
-		if (wCount == master.workerQueue.size()) { // master now has all the keys from the workers
-			coordinateKeysOnWorkers();
-		}
-	}
-
 	@SuppressWarnings("unchecked")
 	public synchronized void receiveWorkerKey(InputStream in, int id) {
 		/*
@@ -139,5 +130,6 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 		for (K key: results.keySet()) {
 			System.out.println("Key: " + key + " Value: " + results.get(key));
 		}
+		System.out.print("> ");
 	}
 }

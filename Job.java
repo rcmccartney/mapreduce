@@ -16,13 +16,13 @@ public class Job<K extends Serializable, V extends Serializable> {
 	protected Mapper<K, V> mr;
 	protected HashMap<K, List<V>> mapOutput;
 	protected HashMap<K, V> finalOut;
-	protected String[] files;
+	protected ArrayList<String> files;
 	
-	public Job(Worker worker, Mapper<K, V> mr, String...strings) {
+	public Job(Worker worker, Mapper<K, V> mr, ArrayList<String> data) {
 		this.worker = worker;
 		this.mr = mr;
 		this.mr.setJob(this);
-		files = strings;
+		files = data;
 		mapOutput = new HashMap<>();
 		finalOut = new HashMap<>();
 	}
@@ -31,10 +31,10 @@ public class Job<K extends Serializable, V extends Serializable> {
 		
 		// since this is reading from a file don't do it in parallel,
 		// speed limit is reading from disk
-		for (final String filename : files) 
+		for (final String filename : files) {
 			// convenience function provided if user doesn't want to call 'emit'
-			emit(mr.map(new File(filename)));
-
+			emit(mr.map(new File(worker.basePath + File.separator + filename)));
+		}
 		// now the output map has been populated, so it needs to be shuffled and sorted 
 		// first notify Master of the keys you have at this node, and their sizes
 		sendAllKeysToMaster();
@@ -89,12 +89,12 @@ public class Job<K extends Serializable, V extends Serializable> {
 		} else {
 			mapOutput.put(key, valList);
 		}
-		System.out.println("List<Value>: " + valList); 
 	}
 	
 	@SuppressWarnings("unchecked")
 	public void receiveKeyAssignments(InputStream in) {
-
+		// TODO bug that the socket hangs if it is given zero files to read
+		// since the worker is not assigned any Keys by the master
 		try {
 			ObjectInputStream objInStream = new ObjectInputStream(in);
 			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
@@ -102,9 +102,11 @@ public class Job<K extends Serializable, V extends Serializable> {
 				K k = (K) o[0];
 				String peerAddress = (String) o[1]; 
 				Integer peerPort = (Integer) o[2]; 
-				List<V> v = mapOutput.get(k);
-				mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
-				worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
+				if (!(worker.wP2P.equals(peerAddress, peerPort))) {
+					List<V> v = mapOutput.get(k);
+					mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
+					worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
+				}
 			}
 			//A worker sends this message, so that master can keep track of workers who are ready for reduce
 			worker.writeMaster(Utils.W2M_KEYSHUFFLED);   
@@ -125,7 +127,6 @@ public class Job<K extends Serializable, V extends Serializable> {
 			worker.writeObjToMaster(new Object[]{key, mapOutput.get(key).size()});
 		}
 		worker.writeMaster(Utils.W2M_KEY_COMPLETE);
-		System.out.println("Keys transferred to Master");
 	}
 	
 	public void sendResults() {

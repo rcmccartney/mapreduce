@@ -40,29 +40,13 @@ public class WorkerP2P extends Thread {
 	public void run(){
 		System.out.println("WorkerP2P Listener info: " + workerServerSocket);
 		try {
-			while(!stopRun){ //may be use !stopRun here
+			while(!stopRun) {
 				Socket p2pSocket = workerServerSocket.accept();
 				System.out.println("Accepted socket: " + p2pSocket);
 				InputStream in = p2pSocket.getInputStream();
-				OutputStream out = p2pSocket.getOutputStream();
-
-				int cmd;
-				if ((cmd = in.read()) != 0) { //commands are one byte
-					switch(cmd){
-					case Utils.W2W_KEY_TRANSFER:
-						ObjectInputStream objInStream = new ObjectInputStream(in);
-						Object[] objArr = (Object[]) objInStream.readObject();
-						//objInStream.close();
-						out.write(Utils.W2W_KEY_TRANSFER_OKAY); // to sync on all receives from a work
-						out.flush();
-						System.out.println(objArr[0] + " " + objArr[1]);
-						worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
-						break;
-					default:
-						System.out.println("invalid command received at WP2P");
-						break;
-					}
-				}
+				ObjectInputStream objInStream = new ObjectInputStream(in);
+				Object[] objArr = (Object[]) objInStream.readObject();
+				worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if(stopRun) return; //cuz if we intended to stop the server
@@ -82,29 +66,17 @@ public class WorkerP2P extends Thread {
 	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
 
 		try {
-			System.out.println("Sending!");
+			System.out.println("Sending " + key + ":" + values + " to " + peerAddress + ":" + port);
 			Socket socket = new Socket(peerAddress, port);
 			System.out.println(socket);
 			OutputStream out = socket.getOutputStream();
-			InputStream in = socket.getInputStream();
-			out.write(Utils.W2W_KEY_TRANSFER); 
-			out.flush();
-					
 			ObjectOutputStream objOutStream = new ObjectOutputStream(out);
-			objOutStream.writeObject(new Object[] {key, values});
-			out.flush();
-					
-			if (in.read() != Utils.W2W_KEY_TRANSFER_OKAY)
-				System.err.println("Invalid response received from Worker at " + peerAddress + "; port: " + port);
-					
-			out.close();
-			in.close();
-			socket.close();
+			objOutStream.writeObject(new Object[]{key, values});
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
-		}
+		} 
 	}
 	
 	/**
@@ -121,8 +93,8 @@ public class WorkerP2P extends Thread {
 		}
 	}
 	
-	//For testing standalone
-	public static void main(String[] args) throws IOException{
-		new WorkerP2P(-1, null);	
+	// each worker is on a unique port
+	public boolean equals(String peerAddress, Integer peerPort) {
+		return workerServerSocket.getLocalPort() == peerPort;
 	}
 }

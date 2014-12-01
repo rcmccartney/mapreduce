@@ -14,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -36,7 +35,9 @@ public class Master extends Thread {
 	protected static int id_counter = 0;
 	protected List<WorkerConnection> workerQueue; 
 	// Hashtable is synchronized 
-	private Hashtable<Integer, List<String>> fileHashTable;
+	private Hashtable<Integer, List<String>> IDtoFiles;
+	private Hashtable<String, Integer> filesToID;
+
 	// stores map from Worker to Port for W2W comms
 	protected Map<Integer, Integer> workerIDAndPorts;
 	protected String MRFileName;
@@ -44,7 +45,8 @@ public class Master extends Thread {
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
-		fileHashTable = new Hashtable<>();
+		filesToID = new Hashtable<>();
+		IDtoFiles = new Hashtable<>();
 		workerIDAndPorts = new HashMap<>();
 		if (args.length > 0)
 			parseArgs(args);
@@ -93,9 +95,9 @@ public class Master extends Thread {
  			int length = in.read();  // TODO won't work for more than 1 byte of files
  			List<String> list = new LinkedList<>();
  			byte[] mybytearray = new byte[1024];
- 			for(int i=0;i<length;i++) {
+ 			for(int i=0; i < length; i++) {
  				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
- 				if(bytesRead > 0) {
+ 				if (bytesRead > 0) {
  					String fileName = new String(mybytearray,0,bytesRead);
  					list.add(fileName);
  				}
@@ -153,6 +155,18 @@ public class Master extends Thread {
 		}
 	}
 	
+	/* TODO
+	private void notificationOfData(List<String> filesToUse) {
+		
+		if (filesToUse.size() > 0) {
+			for(String file : filesToUse ) {
+				WorkerConnection wk = getWCwithId( filesToID.get(file) );
+				wk.writeWorker(Utils.M2W_DATA_USAGE);
+				
+			}
+		}
+	}*/ 
+
 	public static void copyFile(File sourceFile, File destFile) throws IOException {
 	    if(!destFile.exists()) {
 	        destFile.createNewFile();
@@ -180,7 +194,7 @@ public class Master extends Thread {
 			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
 				throw new RuntimeException("Error: no compiler set for MR file");
 			int compilationResult = compiler.run(null, null, null, filename);  
-			System.err.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
+			System.err.println("..." + filename + " compilation " + (compilationResult==0?"successful":"failed"));
 			return filename.split("\\.")[0];  // class name is before ".java"
 		} catch (Exception e) {
 			System.err.println("Exception loading or compiling the File: " + e);
@@ -201,7 +215,7 @@ public class Master extends Thread {
     }
     
     private void printFiles(int workerID) {
-    	List<String> l = fileHashTable.get(workerID);
+    	List<String> l = IDtoFiles.get(workerID);
     	for (String file : l) 
     		System.out.println("  " + file);
     }
@@ -238,7 +252,9 @@ public class Master extends Thread {
 	
 	public synchronized void remove(int workerID) {
 		
-		fileHashTable.remove(workerID);
+		for(String file : IDtoFiles.get(workerID))
+			filesToID.remove(file);
+		IDtoFiles.remove(workerID);
 		Iterator<WorkerConnection> it = workerQueue.iterator();
 		while (it.hasNext()) {
 			WorkerConnection curr = it.next();
@@ -251,7 +267,9 @@ public class Master extends Thread {
 	
 	//TODO better synchronization instead of hastable using concurrent Hashmap?
 	public void addFiles(Integer workerID, List<String> files) {
-		fileHashTable.put(workerID, files);
+		IDtoFiles.put(workerID, files);
+		for(String file : files) 
+			filesToID.put(file, workerID);
 	}
 	
 	public void run()	{
@@ -319,6 +337,8 @@ public class Master extends Thread {
 				else
 					unrecognized(line[1]);
 			else if (line[0].equalsIgnoreCase("ls")) {
+		        // tell the workers to send their files to you
+		        writeAllWorkers(Utils.M2W_REQ_LIST);
 				synchronized (this) {
 					for (WorkerConnection wc : workerQueue) {
 						System.out.println(wc);
@@ -357,14 +377,6 @@ public class Master extends Thread {
 					System.out.printf("Enter filename:%n> ");
 					command = in.nextLine().trim();
 					sendRegularFile(wk, command);
-				}
-			}
-			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
-				try {
-					new WorkerP2P(40013, null).send("Kumar", 
-							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.BASE_WP2P_PORT);
-				} catch (IOException e) {
-					e.printStackTrace();
 				}
 			}
 			else 
