@@ -13,9 +13,9 @@ public abstract class Mapper<K extends Serializable, V extends Serializable> {
 	
 	public abstract V reduce(K key, List<V> listOfValues);
 	
-	public abstract byte[] getBytes(K key);
+	//public abstract byte[] getBytes(K key);
 	
-	public abstract K readBytes(byte[] barr);
+	//public abstract K readBytes(byte[] barr);
 
 	public void emit(K key, V value) {
 		job.emit(key, value);

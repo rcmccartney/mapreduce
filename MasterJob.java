@@ -33,16 +33,6 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 		results = new HashMap<>();
 	}
 
-	public synchronized void receiveWorkerKey(byte[] barr, int id) {
-		byte[] bInt = new byte[4];
-		byte[] keyArr = new byte[barr.length-4]; //subtract last 4 for integer
-		System.arraycopy(barr, 0, keyArr, 0, barr.length-4);
-		System.arraycopy(barr, barr.length-4, bInt, 0, 4);
-		K key = currentJob.readBytes(keyArr);
-		aggregate(key, Utils.byteArrayToInt(bInt)); 
-		storeKeyToWorker(key, id);
-	}
-	
 	public void storeKeyToWorker(K key, int workerID) {
 		//aggregate key_workers_map
 		if(key_workers_map.containsKey(key))
@@ -54,14 +44,11 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 		}
 	}
 	
-	public void aggregate(K key, int count) {
+	public void aggregateKeyCounts(K key, int count) {
 		if (keyCounts.containsKey(key)) 
 			keyCounts.put(key, keyCounts.get(key)+count);
 		else
 			keyCounts.put(key, count);
-		System.out.println("AGGREGATE: ");
-		for (K a : keyCounts.keySet())
-			System.out.println("key: " + a + " Value " + keyCounts.get(a));
 	}
 
 	public void setKeyTransferComplete(int id) {
@@ -74,10 +61,34 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public void receiveWorkerResults(InputStream in) {
-		ObjectInputStream objInStream;
+	public synchronized void receiveWorkerKey(InputStream in, int id) {
+		/*
+		byte[] bInt = new byte[4]; 
+		byte[] keyArr = new byte[barr.length-4]; //subtract last 4 for integer
+		System.arraycopy(barr, 0, keyArr, 0, barr.length-4);
+		System.arraycopy(barr, barr.length-4, bInt, 0, 4);
+		K key = currentJob.readBytes(keyArr);
+		aggregate(key, Utils.byteArrayToInt(bInt)); 
+		storeKeyToWorker(key, id);
+		*/
 		try {
-			objInStream = new ObjectInputStream(in);
+			ObjectInputStream objInStream = new ObjectInputStream(in);
+			Object[] o = (Object[]) objInStream.readObject();		
+			K key = (K) o[0];
+			Integer size = (Integer) o[1];
+			aggregateKeyCounts(key, size); 
+			storeKeyToWorker(key, id);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	@SuppressWarnings("unchecked")
+	public void receiveWorkerResults(InputStream in) {
+		try {
+			ObjectInputStream objInStream = new ObjectInputStream(in);
 			Object[] o = (Object[]) objInStream.readObject();		
 			K k = (K) o[0];
 			V v = (V) o[1];
@@ -90,7 +101,6 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 	}
 	
 	public synchronized void coordinateKeysOnWorkers(){
-		System.out.println("Coodinate Keys called");
 		int numOfKs = key_workers_map.keySet().size();
 		int numOfWs = master.workerQueue.size();
 		int incr = 1;

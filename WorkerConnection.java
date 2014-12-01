@@ -129,16 +129,17 @@ public class WorkerConnection extends Thread {
 				master.addFiles(id, wFiles);
 			break;
 		case Utils.W2M_KEY:
-			master.mj.receiveWorkerKey(readBytes(), this.id);
+			master.mj.receiveWorkerKey(in, this.id);
 			break;
 		case Utils.W2M_KEY_COMPLETE:
 			master.mj.setKeyTransferComplete(this.id);
 			break;
 		case Utils.W2M_KEYSHUFFLED:
 			master.mj.wShuffleCount++;
-			System.out.println("shuffle receive");
-			if(master.mj.wShuffleCount == master.workerQueue.size())
+			if(master.mj.wShuffleCount == master.workerQueue.size()) {
+				System.err.println("...Shuffle & sort completed: starting reduction");
 				master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
+			}
 			break;
 		case Utils.W2M_RESULTS:
 			master.mj.receiveWorkerResults(in);
@@ -146,11 +147,9 @@ public class WorkerConnection extends Thread {
 		case Utils.W2M_JOBDONE:
 			master.mj.wDones++;
 			if (master.mj.wDones == master.workerQueue.size()){
-				System.out.println("***Results***");
 				master.mj.printResults();
 			}
 			break;
-			
 		default:
 			System.err.println("Invalid command received on WorkerConnection: " + command);
 			this.closeConnection();

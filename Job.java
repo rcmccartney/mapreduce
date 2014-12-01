@@ -114,14 +114,15 @@ public class Job<K extends Serializable, V extends Serializable> {
 	}
 	
 	public void sendAllKeysToMaster() {
-		byte[] data;
+		//byte[] data;
 		for (K key: mapOutput.keySet()) {
 			worker.writeMaster(Utils.W2M_KEY);
-			data = Utils.concat(mr.getBytes(key), 
-					Utils.intToByteArray(mapOutput.get(key).size()));
-			worker.writeMaster(data);
+			//data = Utils.concat(mr.getBytes(key), 
+			//		Utils.intToByteArray(mapOutput.get(key).size()));
+			//worker.writeMaster(data);
 			// otherwise data buffer reads into next message
-			try { Thread.sleep(10); } catch (Exception e) {}
+			//try { Thread.sleep(10); } catch (Exception e) {}
+			worker.writeObjToMaster(new Object[]{key, mapOutput.get(key).size()});
 		}
 		worker.writeMaster(Utils.W2M_KEY_COMPLETE);
 		System.out.println("Keys transferred to Master");
@@ -130,7 +131,6 @@ public class Job<K extends Serializable, V extends Serializable> {
 	public void sendResults() {
 		for (Map.Entry<K, V> e : finalOut.entrySet()) {
 			worker.writeMaster(Utils.W2M_RESULTS);
-			System.out.println("Sent results to master:" + e);
 			worker.writeObjToMaster(new Object[]{e.getKey(), e.getValue()});
 		}
 		worker.writeMaster(Utils.W2M_JOBDONE);
