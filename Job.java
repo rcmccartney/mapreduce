@@ -102,12 +102,8 @@ public class Job<K extends Serializable, V> {
 			data = Utils.concat(mr.getBytes(key), 
 					Utils.intToByteArray(mapOutput.get(key).size()));
 			worker.writeMaster(data);
-			try {
-				Thread.sleep(100);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			// otherwise data buffer reads into next message
+			try { Thread.sleep(10); } catch (Exception e) {}
 		}
 		worker.writeMaster(Utils.W2M_KEY_COMPLETE);
 		System.out.println("Keys transferred to Master");

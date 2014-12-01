@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Scanner;
 
@@ -83,8 +84,9 @@ public class Master extends Thread {
     // i.e multiple clients trying to submit MRFiles
     // this method is for sending file received by a client
     // use deleteAfter if this is a temporary file sent from client to Master
-	public void setMRJob(String filename, boolean deleteAfter){
+	public void setMRJob(String filename, List<String> filesToUse, boolean deleteAfter){
 
+		//if filesToUSe is empty then use all files there
 		byte[] byteArrOfFile = null;
 		try {
 			// TODO when jobs is already > 0 store this job for later
@@ -265,12 +267,15 @@ public class Master extends Thread {
 			}
 			else if (line[0].equalsIgnoreCase("ld")) {
 				if (line.length > 1) {
-					setMRJob(line[1], false);
+					List<String> filesToUse = new LinkedList<>();
+					for(int i = 2; i < line.length; i++)
+						filesToUse.add(line[i]);
+					setMRJob(line[1], filesToUse, false);
 				}
 				else {
-					System.out.printf("Enter filename:%n> ");
+					System.out.printf("Enter filename (operates on all worker files):%n> ");
 					command = in.nextLine().trim();
-					setMRJob(command, false);
+					setMRJob(command, new LinkedList<String>(), false);
 				}
 			}
 			else if (line[0].equalsIgnoreCase("lf")) {

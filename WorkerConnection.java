@@ -110,12 +110,17 @@ public class WorkerConnection extends Thread {
 		//this workerconnection is only used for a client to send a MR job to the Master
 		// after which it is shutdown
 		case Utils.C2M_UPLOAD:	
-			String name = receiveFileFromClient();
+			MRFileName = receiveFileFromClient();
+			break;
+		case Utils.C2M_UPLOAD_FILES:
+			List<String> filesToUse = getFilesList();
+			master.setMRJob(MRFileName, filesToUse, true);
 			closeConnection();
-			master.setMRJob(name, true);
 			break;
 		case Utils.M2W_REQ_LIST_OKAY:
-			getFilesList();
+			List<String> wFiles = getFilesList();
+			if (wFiles != null)
+				master.addFiles(id, wFiles);
 			break;
 		case Utils.W2M_KEY:
 			master.mj.receiveWorkerKey(readBytes(), this.id);
@@ -133,11 +138,10 @@ public class WorkerConnection extends Thread {
 	} 
     
 	public void sendFile(String name, byte[] bArr, byte transferType) {
-		MRFileName = name;
-		byteArrOfMRFile = bArr;
-		//notify client of pending MR transmission and wait for response
+
+		//notify client of pending MR transmission and send data
 		writeWorker(transferType);
-		writeWorker(MRFileName+'\n', byteArrOfMRFile);  //newline critical
+		writeWorker(name+'\n', bArr);  //newline critical
 	}
     
 	private String receiveFileFromClient() {
@@ -172,7 +176,7 @@ public class WorkerConnection extends Thread {
 	 * Sends REQ_LIST(R) to worker and reads list
 	 * Adds it to hashtable
 	 */
-	private void getFilesList() {
+	private List<String> getFilesList() {
 		try {
 			int length = in.read();  // TODO won't work for more than 1 byte of files
 			List<String> list = new LinkedList<>();
@@ -184,9 +188,10 @@ public class WorkerConnection extends Thread {
 					list.add(fileName);
 				}
 			}
-			master.addFiles(id, list);
+			return list;
 		} catch (IOException e) {
 			System.err.println("Exception while receiving file listing from Client: " + e);
+			return null;
 		}
 	}
 	

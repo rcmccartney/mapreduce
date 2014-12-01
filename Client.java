@@ -11,12 +11,19 @@ public class Client extends Worker {
 		super(args);
 	}
 	
-	public void sendFile(String filePath) {
+	public void sendJob(String jobFilePath, String...filePaths) {
 		try {
-			Path file = Paths.get(filePath);
+			Path file = Paths.get(jobFilePath);
 			byte[] filedata = Files.readAllBytes(file);
 			writeMaster(Utils.C2M_UPLOAD);
     		writeMaster(file.getFileName().toString()+'\n', filedata);
+			// otherwise data buffer reads into next message
+    		try { Thread.sleep(10); } catch (Exception e) {}
+    		writeMaster(Utils.C2M_UPLOAD_FILES);
+    		writeMaster(filePaths.length);
+    		for (String fileToUse : filePaths) {
+    			writeMaster(fileToUse);
+    		}
 			System.out.println("Java file uploaded to Master server.");
     		closeConnection();
 		} catch (IOException e) {
@@ -26,6 +33,7 @@ public class Client extends Worker {
 	}
 		
 	public static void main(String[] args) {
-		new Client(args).sendFile("C:\\Users\\mccar_000\\Desktop\\MRTest.java"); //send a file from Desktop to the Master
+		//send a file from Desktop to the Master
+		new Client(args).sendJob("C:\\Users\\mccar_000\\Desktop\\MRTest.java", "here", "there"); 
 	}
 }

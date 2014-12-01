@@ -14,6 +14,7 @@ public class Utils {
 	//Command constants used in network communication
 	public static final byte 
 			C2M_UPLOAD = 'C', 
+			C2M_UPLOAD_FILES = 'B',
 			M2W_MR_UPLOAD = 'W',
 			MR_QUIT = 'Q',
 			W2M_KEY = 'L', 
