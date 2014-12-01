@@ -27,7 +27,7 @@ public class WorkerP2P extends Thread {
     
     public WorkerP2P(int port, Worker worker) throws IOException {
     	this.exec = Executors.newCachedThreadPool();
-    	this.port = port == -1 ? Utils.DEF_WP2P_PORT: port;
+    	this.port = port;   // == -1 ? Utils.DEF_WP2P_PORT: port;
     	workerServerSocket = new ServerSocket(this.port);
     	this.worker = worker;
     	this.setDaemon(true);
@@ -42,28 +42,27 @@ public class WorkerP2P extends Thread {
 		try {
 			while(!stopRun){ //may be use !stopRun here
 				Socket p2pSocket = workerServerSocket.accept();
+				System.out.println("Accepted socket: " + p2pSocket);
 				InputStream in = p2pSocket.getInputStream();
 				OutputStream out = p2pSocket.getOutputStream();
 
-				byte cmd = (byte) in.read(); //commands are one byte
-				switch(cmd){
-				case Utils.W2W_KEY_TRANSFER:
-					ObjectInputStream objInStream = new ObjectInputStream(in);
-					Object[] objArr = (Object[]) objInStream.readObject();
-					objInStream.close();
-					out.write(Utils.W2W_KEY_TRANSFER_OKAY); 
-					out.flush();
-					System.out.println(objArr[0] + " " + objArr[1]);
-					worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
-					break;
-					
-				default:
-					System.out.println("invalid command received at WP2P");
-					break;
+				int cmd;
+				if ((cmd = in.read()) != 0) { //commands are one byte
+					switch(cmd){
+					case Utils.W2W_KEY_TRANSFER:
+						ObjectInputStream objInStream = new ObjectInputStream(in);
+						Object[] objArr = (Object[]) objInStream.readObject();
+						//objInStream.close();
+						out.write(Utils.W2W_KEY_TRANSFER_OKAY); // to sync on all receives from a work
+						out.flush();
+						System.out.println(objArr[0] + " " + objArr[1]);
+						worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
+						break;
+					default:
+						System.out.println("invalid command received at WP2P");
+						break;
+					}
 				}
-				in.close();
-				out.close();
-				p2pSocket.close();
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if(stopRun) return; //cuz if we intended to stop the server
@@ -83,7 +82,9 @@ public class WorkerP2P extends Thread {
 	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
 
 		try {
+			System.out.println("Sending!");
 			Socket socket = new Socket(peerAddress, port);
+			System.out.println(socket);
 			OutputStream out = socket.getOutputStream();
 			InputStream in = socket.getInputStream();
 			out.write(Utils.W2W_KEY_TRANSFER); 

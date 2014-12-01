@@ -8,7 +8,7 @@ import java.nio.file.Paths;
 public class Client extends Worker {
 
 	public Client(String[] args) {
-		super(args);
+		super(args, true);
 	}
 	
 	public void sendJob(String jobFilePath, String...filePaths) {
@@ -24,16 +24,16 @@ public class Client extends Worker {
     		for (String fileToUse : filePaths) {
     			writeMaster(fileToUse);
     		}
-			System.out.println("Java file uploaded to Master server.");
-    		closeConnection();
+			System.out.printf("Java file uploaded to Master server from Client %d%n", id);
+			closeConnection();
 		} catch (IOException e) {
 			System.out.println("Error loading MR file");
-			closeConnection();
 		}
 	}
 		
 	public static void main(String[] args) {
 		//send a file from Desktop to the Master
-		new Client(args).sendJob("C:\\Users\\mccar_000\\Desktop\\MRTest.java", "here", "there"); 
+		String[] clientArgs = { "-port", ""+Utils.DEF_CLIENT_PORT };
+		new Client(clientArgs).sendJob("C:\\Users\\mccar_000\\Desktop\\MRTest.java", "here", "there"); 
 	}
 }

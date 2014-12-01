@@ -1,14 +1,11 @@
 package mapreduce;
 
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -123,18 +120,11 @@ public class WorkerConnection extends Thread {
     private void receive(int command){
 		
 		switch(command) {
-		//this workerconnection is only used for a client to send a MR job to the Master
-		// after which it is shutdown
-		case Utils.C2M_UPLOAD:	
-			MRFileName = receiveFileFromClient();
-			break;
-		case Utils.C2M_UPLOAD_FILES:
-			List<String> filesToUse = getFilesList();
-			master.setMRJob(MRFileName, filesToUse, true);
-			closeConnection();
+		case Utils.W2M_WP2P_PORT:
+			master.workerIDAndPorts.put(this.id, readInt());
 			break;
 		case Utils.M2W_REQ_LIST_OKAY:
-			List<String> wFiles = getFilesList();
+			List<String> wFiles = master.getFilesList(in);
 			if (wFiles != null)
 				master.addFiles(id, wFiles);
 			break;
@@ -146,76 +136,34 @@ public class WorkerConnection extends Thread {
 			break;
 		case Utils.W2M_KEYSHUFFLED:
 			master.mj.wShuffleCount++;
+			System.out.println("shuffle receive");
 			if(master.mj.wShuffleCount == master.workerQueue.size())
 				master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
 			break;
 		case Utils.W2M_RESULTS:
-			master.mj.receiveWorkerResults(readBytes());
+			master.mj.receiveWorkerResults(in);
 			break;
+		case Utils.W2M_JOBDONE:
+			master.mj.wDones++;
+			if (master.mj.wDones == master.workerQueue.size()){
+				System.out.println("***Results***");
+				master.mj.printResults();
+			}
+			break;
+			
 		default:
 			System.err.println("Invalid command received on WorkerConnection: " + command);
+			this.closeConnection();
 			break;
 		}
 	} 
     
 	public void sendFile(String name, byte[] bArr, byte transferType) {
-
 		//notify client of pending MR transmission and send data
 		writeWorker(transferType);
 		writeWorker(name+'\n', bArr);  //newline critical
 	}
     
-	private String receiveFileFromClient() {
-		System.err.print("...Receiving MR job from Client node: ");
-		try{
-			// the first thing sent will be the filename
-			int f;
-			String name = "";
-			while( (f = in.read()) != '\n') {
-				name += (char) f;
-			}
-			int totalBytes = 0;
-			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(name));
-			while (true){
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				totalBytes += bytesRead;
-				if (bytesRead <= 0) break;
-				bos.write(mybytearray, 0, bytesRead);
-				if (bytesRead < 1024) break;
-			}
-			System.err.printf("%d bytes read%n", totalBytes);
-			bos.close();
-			return name;
-		} catch (IOException e) {
-			System.err.println("Exception while receiving file from Client: " + e);
-			return null;
-		}
-	}
-	
-	/*Function to get list of files from Worker
-	 * Sends REQ_LIST(R) to worker and reads list
-	 * Adds it to hashtable
-	 */
-	private List<String> getFilesList() {
-		try {
-			int length = in.read();  // TODO won't work for more than 1 byte of files
-			List<String> list = new LinkedList<>();
-			byte[] mybytearray = new byte[1024];
-			for(int i=0;i<length;i++) {
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				if(bytesRead > 0) {
-					String fileName = new String(mybytearray,0,bytesRead);
-					list.add(fileName);
-				}
-			}
-			return list;
-		} catch (IOException e) {
-			System.err.println("Exception while receiving file listing from Client: " + e);
-			return null;
-		}
-	}
-	
 	public byte[] readBytes() {
 		try{		
 			byte[] mybytearray = new byte[1024];
@@ -231,6 +179,17 @@ public class WorkerConnection extends Thread {
 		} catch (IOException e) {
 			System.err.println("Exception while receiving file from Client: " + e);
 			return null;
+		}
+	}
+	
+	public int readInt() {
+		try{		
+			byte[] mybytearray = new byte[4];
+			in.read(mybytearray, 0, mybytearray.length);
+			return Utils.byteArrayToInt( mybytearray );
+		} catch (IOException e) {
+			System.err.println("Exception while receiving file from Client: " + e);
+			return -1;
 		}
 	}
 

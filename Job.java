@@ -2,13 +2,15 @@ package mapreduce;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-public class Job<K extends Serializable, V> {
+public class Job<K extends Serializable, V extends Serializable> {
 
 	protected Worker worker;
 	protected Mapper<K, V> mr;
@@ -56,9 +58,7 @@ public class Job<K extends Serializable, V> {
 				e.printStackTrace();
 			}
 		}
-		
 		//finalOut holds the results of this MR job, send it to Master
-		worker.writeMaster(Utils.W2M_RESULTS);
 		sendResults();
 	}
 	
@@ -89,19 +89,15 @@ public class Job<K extends Serializable, V> {
 		} else {
 			mapOutput.put(key, valList);
 		}
-		//System.out.println("Recieved from Worker: ");
-		System.out.println("Key: " + key);
-		System.out.println("Key's: type" + key.getClass().getName());
 		System.out.println("List<Value>: " + valList); 
 	}
 	
 	@SuppressWarnings("unchecked")
-	public void receiveKeyAssignments() {
+	public void receiveKeyAssignments(InputStream in) {
 
 		try {
-			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
+			ObjectInputStream objInStream = new ObjectInputStream(in);
 			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
-			System.out.println("Received TMsgs: " + keyTransferMsgs);
 			for (Object[] o : keyTransferMsgs) {
 				K k = (K) o[0];
 				String peerAddress = (String) o[1]; 
@@ -112,7 +108,6 @@ public class Job<K extends Serializable, V> {
 			}
 			//A worker sends this message, so that master can keep track of workers who are ready for reduce
 			worker.writeMaster(Utils.W2M_KEYSHUFFLED);   
-			objInStream.close();
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();
 		}
@@ -133,8 +128,12 @@ public class Job<K extends Serializable, V> {
 	}
 	
 	public void sendResults() {
-		
-	
+		for (Map.Entry<K, V> e : finalOut.entrySet()) {
+			worker.writeMaster(Utils.W2M_RESULTS);
+			System.out.println("Sent results to master:" + e);
+			worker.writeObjToMaster(new Object[]{e.getKey(), e.getValue()});
+		}
+		worker.writeMaster(Utils.W2M_JOBDONE);
 	}
 	
 	public void stopExecution() {

@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
@@ -43,6 +44,7 @@ public class Worker implements Runnable {
 	protected WorkerP2P wP2P;
 	protected String basePath;
 	protected File baseDir;
+	protected boolean client;
 	// TODO job queue 
     
     /**
@@ -51,7 +53,7 @@ public class Worker implements Runnable {
      * 
      * @param args String[] from the command line
      */
-    public Worker(String[] args) {
+    public Worker(String[] args, boolean client) {
     	if (args.length > 0)  
     		parseArgs(args);
     	try {
@@ -63,11 +65,16 @@ public class Worker implements Runnable {
             in = socket.getInputStream();
             id = in.read();  //first thing sent is worker ID
             // using port + 1 for Wp2p ensures it is unique for multiple instances
-            wP2P = new WorkerP2P(Utils.DEF_WP2P_PORT+id, this); 
-            basePath = Utils.basePath + File.separator + id;
-        	baseDir = new File(basePath);
-        	if (!baseDir.isDirectory())
-        		baseDir.mkdirs();
+            this.client = client;
+            if (!client) {
+            	wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this); 
+            	writeMaster(Utils.W2M_WP2P_PORT); 
+            	writeMaster(Utils.intToByteArray(wP2P.port)); 
+            	basePath = Utils.basePath + File.separator + id;
+            	baseDir = new File(basePath);
+            	if (!baseDir.isDirectory())
+            		baseDir.mkdirs();
+            }
             new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
@@ -107,13 +114,19 @@ public class Worker implements Runnable {
     }
 
     public void writeMaster(int arg) {
+    	byte[] barr = Utils.intToByteArray(arg);
+    	writeMaster(barr);
+    }
+    
+    public void writeObjToMaster(final Object obj) {
     	try {
-    		out.write(arg);
-    		out.flush();
+    		ObjectOutputStream objStream = new ObjectOutputStream(out);
+    		objStream.writeObject(obj);
+    		objStream.flush();
     	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
+    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
+    		closeConnection();
+    	}				
     }
     
     public synchronized boolean isStopped() {
@@ -129,8 +142,10 @@ public class Worker implements Runnable {
     	try {
     		if (currentJob != null) 
     			currentJob.stopExecution();
-    		Files.delete(Paths.get(baseDir.getPath()));
-    		wP2P.closeConnection();
+    		if (!client) {
+    			Files.deleteIfExists(Paths.get(baseDir.getPath()));
+    			wP2P.closeConnection();
+    		}
     		socket.close();
     		in.close();
     		out.close();
@@ -216,7 +231,7 @@ public class Worker implements Runnable {
     		closeConnection();
     		break;
 		case Utils.M2W_COORD_KEYS:	
-			currentJob.receiveKeyAssignments();
+			currentJob.receiveKeyAssignments(in);
 			break;
 		case Utils.M2W_BEGIN_REDUCE:
 			currentJob.reduce();
@@ -287,7 +302,7 @@ public class Worker implements Runnable {
 	 * @throws RemoteException 
 	 */
 	public static void main(String[] args) {
-		new Worker(args);
+		new Worker(args, false);
 	}
 }
 

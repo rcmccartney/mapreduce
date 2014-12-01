@@ -1,5 +1,6 @@
 package mapreduce;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
@@ -8,14 +9,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class MasterJob<K extends Serializable, V> {
+public class MasterJob<K extends Serializable, V extends Serializable> {
 
 	protected Mapper<K, V> currentJob;
+	protected HashMap<K, V> results;
 	protected HashMap<K, Integer> keyCounts; 
 	protected Master master;
 	//Map b/w key and list of Worker Ids it came from
 	protected Map<K, List<Integer>> key_workers_map; 
-	protected int wCount = 0; //to keep track of number of workers who have sent keys
+	protected int wCount = 0, wDones = 0; //to keep track of number of workers who have sent keys
 	protected int wShuffleCount = 0; //keeps track of # of workers who finished mapping
 	// Map b/w WorkerId (Integer) and List of Transfer Messages for this workerId 
 	// i.e List<<Key, AddressOfWorkerPeer>>
@@ -28,6 +30,7 @@ public class MasterJob<K extends Serializable, V> {
 		keyCounts = new HashMap<>();
 		key_workers_map = new HashMap<>();
 		worker_messages_map = new HashMap<>();
+		results = new HashMap<>();
 	}
 
 	public synchronized void receiveWorkerKey(byte[] barr, int id) {
@@ -70,9 +73,20 @@ public class MasterJob<K extends Serializable, V> {
 		}
 	}
 
-	public void receiveWorkerResults(byte[] barr) {
-		// TODO Auto-generated method stub
-		
+	@SuppressWarnings("unchecked")
+	public void receiveWorkerResults(InputStream in) {
+		ObjectInputStream objInStream;
+		try {
+			objInStream = new ObjectInputStream(in);
+			Object[] o = (Object[]) objInStream.readObject();		
+			K k = (K) o[0];
+			V v = (V) o[1];
+			results.put(k, v);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public synchronized void coordinateKeysOnWorkers(){
@@ -85,16 +99,14 @@ public class MasterJob<K extends Serializable, V> {
 		}
 		int kIdx = 0, wQIdx = 0;// WorkerConnection currWoker = master.workerQueue.get(0); 
 		for (K key : key_workers_map.keySet()){
-			Object[] transferMessage = new Object[]
-					{key,  //contains key, ipaddress and port to send the key to
+			Object[] transferMessage = new Object[]{key,  //contains key, ipaddress and port to send 
 					master.workerQueue.get(wQIdx).clientSocket.getInetAddress().getHostAddress(),
-					master.workerQueue.get(wQIdx).clientSocket.getPort()}; //TODO: change to wp2p port
+					master.workerIDAndPorts.get(master.workerQueue.get(wQIdx).id)}; 
 			for (Integer wId : key_workers_map.get(key)){
-				if(wId == master.workerQueue.get(wQIdx).id)//if its the worker to which the key's assigned, then skip
-					continue;
-				if(worker_messages_map.containsKey(wId)){
+				if (worker_messages_map.containsKey(wId)) {
 					worker_messages_map.get(wId).add(transferMessage);
-				} else {
+				} 
+				else {
 					List<Object[]> messages = new ArrayList<Object[]>();
 					messages.add(transferMessage);
 					worker_messages_map.put(wId, messages);
@@ -112,4 +124,10 @@ public class MasterJob<K extends Serializable, V> {
 		}
 	}
 
+	public void printResults() {
+		System.out.println("***Final Results***");
+		for (K key: results.keySet()) {
+			System.out.println("Key: " + key + " Value: " + results.get(key));
+		}
+	}
 }

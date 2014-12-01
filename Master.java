@@ -4,13 +4,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Method;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.net.UnknownHostException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -18,16 +15,16 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-
-import com.sun.org.apache.xalan.internal.xsltc.compiler.CompilerException;
 
 public class Master extends Thread {
 
@@ -40,13 +37,21 @@ public class Master extends Thread {
 	protected List<WorkerConnection> workerQueue; 
 	// Hashtable is synchronized 
 	private Hashtable<Integer, List<String>> fileHashTable;
+	// stores map from Worker to Port for W2W comms
+	protected Map<Integer, Integer> workerIDAndPorts;
+	protected String MRFileName;
+	protected ClientListener clients;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
 		fileHashTable = new Hashtable<>();
+		workerIDAndPorts = new HashMap<>();
 		if (args.length > 0)
 			parseArgs(args);
 		serverSocket = new ServerSocket(port);
+		clients = new ClientListener(this);
+		clients.setDaemon(true);
+		clients.start();
 	}
 	
     private synchronized boolean isStopped() {
@@ -78,6 +83,29 @@ public class Master extends Thread {
 			System.err.println("Error reading file in Master node");
 		}
     }
+     
+ 	/*Function to get list of files from Worker
+ 	 * Sends REQ_LIST(R) to worker and reads list
+ 	 * Adds it to hashtable
+ 	 */
+ 	public List<String> getFilesList(InputStream in) {
+ 		try {
+ 			int length = in.read();  // TODO won't work for more than 1 byte of files
+ 			List<String> list = new LinkedList<>();
+ 			byte[] mybytearray = new byte[1024];
+ 			for(int i=0;i<length;i++) {
+ 				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
+ 				if(bytesRead > 0) {
+ 					String fileName = new String(mybytearray,0,bytesRead);
+ 					list.add(fileName);
+ 				}
+ 			}
+ 			return list;
+ 		} catch (IOException e) {
+ 			System.err.println("Exception while receiving file listing from Client: " + e);
+ 			return null;
+ 		}
+ 	}
     
 	// check if this method needs to be called by multiple threads. 
     // i.e multiple clients trying to submit MRFiles
@@ -95,6 +123,9 @@ public class Master extends Thread {
 					f1 = new File(filename);
 					f2 = new File(f1.getName());
 					copyFile(f1, f2);
+				}
+				else { //this file came from an external client
+					f2 = new File(filename);
 				}
 				String className = compile(f2.getName());
 				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
@@ -147,7 +178,7 @@ public class Master extends Thread {
 		try {	
 			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
 			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
-				throw new CompilerException("Error: no compiler set for MR file");
+				throw new RuntimeException("Error: no compiler set for MR file");
 			int compilationResult = compiler.run(null, null, null, filename);  
 			System.err.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
 			return filename.split("\\.")[0];  // class name is before ".java"
@@ -331,7 +362,7 @@ public class Master extends Thread {
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
 				try {
 					new WorkerP2P(40013, null).send("Kumar", 
-							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.DEF_WP2P_PORT);
+							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.BASE_WP2P_PORT);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}

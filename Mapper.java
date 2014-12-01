@@ -5,7 +5,7 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 
-public abstract class Mapper<K extends Serializable, V> {
+public abstract class Mapper<K extends Serializable, V extends Serializable> {
 	
 	private Job<K, V> job;
 	
