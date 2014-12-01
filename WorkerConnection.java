@@ -133,6 +133,9 @@ public class WorkerConnection extends Thread {
 			master.setMRJob(MRFileName, filesToUse, true);
 			closeConnection();
 			break;
+		case Utils.W2M_WP2P_PORT:
+			master.workerIDAndPorts.put(this.id, readInt());
+			break;
 		case Utils.M2W_REQ_LIST_OKAY:
 			List<String> wFiles = getFilesList();
 			if (wFiles != null)
@@ -231,6 +234,17 @@ public class WorkerConnection extends Thread {
 		} catch (IOException e) {
 			System.err.println("Exception while receiving file from Client: " + e);
 			return null;
+		}
+	}
+	
+	public int readInt() {
+		try{		
+			byte[] mybytearray = new byte[4];
+			in.read(mybytearray, 0, mybytearray.length);
+			return Utils.byteArrayToInt( mybytearray );
+		} catch (IOException e) {
+			System.err.println("Exception while receiving file from Client: " + e);
+			return -1;
 		}
 	}
 

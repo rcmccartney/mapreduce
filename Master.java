@@ -4,13 +4,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.net.UnknownHostException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -18,10 +14,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 import javax.tools.JavaCompiler;
@@ -40,10 +38,13 @@ public class Master extends Thread {
 	protected List<WorkerConnection> workerQueue; 
 	// Hashtable is synchronized 
 	private Hashtable<Integer, List<String>> fileHashTable;
+	// stores map from Worker to Port for W2W comms
+	protected Map<Integer, Integer> workerIDAndPorts;
 	
 	public Master(String[] args) throws IOException	{
 		workerQueue = new ArrayList<>();
 		fileHashTable = new Hashtable<>();
+		workerIDAndPorts = new HashMap<>();
 		if (args.length > 0)
 			parseArgs(args);
 		serverSocket = new ServerSocket(port);
@@ -331,7 +332,7 @@ public class Master extends Thread {
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
 				try {
 					new WorkerP2P(40013, null).send("Kumar", 
-							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.DEF_WP2P_PORT);
+							Arrays.asList("A", "B", "D"), "127.0.0.1", Utils.BASE_WP2P_PORT);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}

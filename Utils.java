@@ -8,26 +8,27 @@ public class Utils {
 	// Flag to turn on/off debug messages (mostly logs) on the server
 	public static final boolean DEBUG = true;
 	
-	public static final int DEF_WP2P_PORT = 40016,
+	public static final int BASE_WP2P_PORT = 40016,
 							DEF_MASTER_PORT = 40001;
 	
 	//Command constants used in network communication
 	public static final byte 
-			C2M_UPLOAD = 'C', 
-			C2M_UPLOAD_FILES = 'B',
-			M2W_MR_UPLOAD = 'W',
-			MR_QUIT = 'Q',
-			W2M_KEY = 'L', 
-			W2M_KEY_COMPLETE = 'Z', 
-			W2W_KEY_TRANSFER = 'K',
-			W2M_RESULTS = 'R',
-			M2W_REQ_LIST = 'F',
-			M2W_REQ_LIST_OKAY = 'F',
-			M2W_FILE = 'A',
-			M2W_COORD_KEYS = 'M',
-			W2W_KEY_TRANSFER_OKAY = 11,
-			W2M_KEYSHUFFLED = 12,
-			M2W_BEGIN_REDUCE = 12;
+			C2M_UPLOAD = 1, 
+			C2M_UPLOAD_FILES = 2,
+			M2W_MR_UPLOAD = 3,
+			MR_QUIT = 4,
+			W2M_KEY = 5, 
+			W2M_KEY_COMPLETE = 6, 
+			W2W_KEY_TRANSFER = 7,
+			W2M_RESULTS = 8,
+			M2W_REQ_LIST = 9,
+			M2W_REQ_LIST_OKAY = 10,
+			M2W_FILE = 11,
+			M2W_COORD_KEYS = 12,
+			W2W_KEY_TRANSFER_OKAY = 13,
+			W2M_KEYSHUFFLED = 14,
+			M2W_BEGIN_REDUCE = 15,
+			W2M_WP2P_PORT = 16;
 
 	
 	//Path for flat directory, where each worker stores files

@@ -56,7 +56,6 @@ public class Job<K extends Serializable, V> {
 				e.printStackTrace();
 			}
 		}
-		
 		//finalOut holds the results of this MR job, send it to Master
 		worker.writeMaster(Utils.W2M_RESULTS);
 		sendResults();

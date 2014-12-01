@@ -63,7 +63,9 @@ public class Worker implements Runnable {
             in = socket.getInputStream();
             id = in.read();  //first thing sent is worker ID
             // using port + 1 for Wp2p ensures it is unique for multiple instances
-            wP2P = new WorkerP2P(Utils.DEF_WP2P_PORT+id, this); 
+            wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this); 
+            writeMaster(Utils.W2M_WP2P_PORT); 
+            writeMaster(Utils.intToByteArray(wP2P.port)); 
             basePath = Utils.basePath + File.separator + id;
         	baseDir = new File(basePath);
         	if (!baseDir.isDirectory())
