@@ -11,8 +11,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
@@ -28,6 +32,7 @@ import java.nio.file.Paths;
 public class Worker implements Runnable {
 
 	protected String hostName = ""; 
+	protected int id;
 	protected int port = Utils.DEF_MASTER_PORT;
 	protected Socket socket;
 	protected OutputStream out;
@@ -35,6 +40,7 @@ public class Worker implements Runnable {
 	//stopped is used by multiple threads, must be synchronized
 	protected boolean stopped = false;
 	protected Job<?, ?> currentJob;
+	protected String basePath;
 	protected File baseDir;
 	// TODO job queue 
     
@@ -54,7 +60,9 @@ public class Worker implements Runnable {
     		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
-        	baseDir = new File(Utils.basePath);
+            id = in.read();  //first thing sent is worker ID
+            basePath = Utils.basePath + File.separator + id;
+        	baseDir = new File(basePath);
         	if (!baseDir.isDirectory())
         		baseDir.mkdirs();
             new Thread(this).start();  //start a thread to read from the Master
@@ -118,19 +126,33 @@ public class Worker implements Runnable {
     	try {
     		if (currentJob != null) 
     			currentJob.stopExecution();
+    		Files.delete(Paths.get(baseDir.getPath()));
     		socket.close();
     		in.close();
     		out.close();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
     
+  //need to do add path to Classpath with reflection since the URLClassLoader.addURL(URL url) method is protected:
+    public static URLClassLoader addPath(String s) throws Exception {
+        File f = new File(s);
+        URI u = f.toURI();
+        URLClassLoader urlClassLoader = (URLClassLoader) ClassLoader.getSystemClassLoader();
+        Class<URLClassLoader> urlClass = URLClassLoader.class;
+        Method method = urlClass.getDeclaredMethod("addURL", new Class[]{URL.class});
+        method.setAccessible(true);
+        method.invoke(urlClassLoader, new Object[]{u.toURL()});
+        return urlClassLoader;
+    }
+    
 	// TODO add it so User can send already compiled classes over byte stream
 	private Mapper<?, ?> loadMRFile(String classfile){		
 		try {	
-			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(classfile.split("\\.")[0]); 
+			Class<?> myClass = addPath(basePath).
+					loadClass(classfile.split("\\.")[0]); 
 			Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
 			// clean up the files you created
-			Files.delete(Paths.get(classfile));
+			Files.delete(Paths.get(basePath + File.separator + classfile));
 			return mr;
 		} catch (Exception e) {
 			System.err.println("Exception loading or compiling the File: " + e);
@@ -138,7 +160,7 @@ public class Worker implements Runnable {
 		}
 	} 			
     
-	private String receiveMRFile(){
+	private String receiveFile(){
 		System.out.print("Worker received new MR job: ");
 		try {
 			// the first thing sent will be the filename
@@ -149,7 +171,8 @@ public class Worker implements Runnable {
 			}
 			// now read the actual byte array
 			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(name));
+			BufferedOutputStream bos = new BufferedOutputStream(
+					new FileOutputStream(basePath + File.separator + name));
 			int totalCount = 0;
 			while(true) {
 				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
@@ -162,7 +185,7 @@ public class Worker implements Runnable {
 			bos.close();
 			return name;
 		} catch (IOException e) {
-    		System.err.println("Error receiving MR file from Master: closing connection.");
+    		System.err.println("Error receiving file from Master: closing connection.");
     		this.closeConnection();
     		return null;
 		}
@@ -192,14 +215,17 @@ public class Worker implements Runnable {
 		case Utils.M2W_KEYASSIGN:	
 			currentJob.receiveKeyAssignments();
 			break;
-		case Utils.M2W_UPLOAD:
+		case Utils.M2W_MR_UPLOAD:
 			// TODO filesystem that can take in actual file names instead of "here", "there"
-			Mapper<?, ?> mr = loadMRFile(receiveMRFile());
+			Mapper<?, ?> mr = loadMRFile(receiveFile());
 			if (mr != null) {
 				currentJob = new Job<>(this, mr, "here", "there");
 				currentJob.begin();
 			}
 			break;	
+		case Utils.M2W_FILE:
+			receiveFile();
+			break;
 		case Utils.M2W_REQ_LIST:  // master is requesting file list
 			writeMaster(Utils.M2W_REQ_LIST_OKAY);
 			sendFilesList(baseDir);

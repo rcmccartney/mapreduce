@@ -14,7 +14,7 @@ public class Utils {
 	//Command constants used in network communication
 	public static final byte 
 			C2M_UPLOAD = 'C', 
-			M2W_UPLOAD = 'W',
+			M2W_MR_UPLOAD = 'W',
 			MR_QUIT = 'Q',
 			W2M_KEY = 'L', 
 			W2M_KEY_COMPLETE = 'Z', 
@@ -22,7 +22,8 @@ public class Utils {
 			W2W_KEY_TRANSFER = 'K',
 			W2M_RESULTS = 'R',
 			M2W_REQ_LIST = 'F',
-			M2W_REQ_LIST_OKAY = 'F';
+			M2W_REQ_LIST_OKAY = 'F',
+			M2W_FILE = 'A';
 
 	
 	//Path for flat directory, where each worker stores files
