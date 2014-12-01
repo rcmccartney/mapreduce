@@ -28,7 +28,8 @@ public class Utils {
 			W2W_KEY_TRANSFER_OKAY = 13,
 			W2M_KEYSHUFFLED = 14,
 			M2W_BEGIN_REDUCE = 15,
-			W2M_WP2P_PORT = 16;
+			W2M_WP2P_PORT = 16,
+			M2C_RESULT = 20;
 
 	
 	//Path for flat directory, where each worker stores files
