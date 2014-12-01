@@ -148,6 +148,8 @@ public class Worker implements Runnable {
 	// TODO add it so User can send already compiled classes over byte stream
 	private Mapper<?, ?> loadMRFile(String classfile){		
 		try {	
+			// need each worker to have its own directory in case it is running locally
+			// this requires the classpath to be changed
 			Class<?> myClass = addPath(basePath).
 					loadClass(classfile.split("\\.")[0]); 
 			Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
@@ -161,7 +163,6 @@ public class Worker implements Runnable {
 	} 			
     
 	private String receiveFile(){
-		System.out.print("Worker received new MR job: ");
 		try {
 			// the first thing sent will be the filename
 			int f;
@@ -181,7 +182,7 @@ public class Worker implements Runnable {
 				bos.write(mybytearray, 0, bytesRead);
 				if (bytesRead < 1024) break;
 			}
-			System.out.printf("%d bytes downloaded%n", totalCount);
+			System.out.printf("%s %d bytes downloaded%n", name, totalCount);
 			bos.close();
 			return name;
 		} catch (IOException e) {
@@ -217,6 +218,7 @@ public class Worker implements Runnable {
 			break;
 		case Utils.M2W_MR_UPLOAD:
 			// TODO filesystem that can take in actual file names instead of "here", "there"
+			System.out.print("Worker received new MR job: ");
 			Mapper<?, ?> mr = loadMRFile(receiveFile());
 			if (mr != null) {
 				currentJob = new Job<>(this, mr, "here", "there");
@@ -224,8 +226,9 @@ public class Worker implements Runnable {
 			}
 			break;	
 		case Utils.M2W_FILE:
+			System.out.print("Worker received new file: ");
 			receiveFile();
-			break;
+			// dont use break so Worker updates Master on his new file
 		case Utils.M2W_REQ_LIST:  // master is requesting file list
 			writeMaster(Utils.M2W_REQ_LIST_OKAY);
 			sendFilesList(baseDir);

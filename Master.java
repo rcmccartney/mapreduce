@@ -58,7 +58,7 @@ public class Master extends Thread {
     }
     
     
-    public void sendFile(String workerID, String filename) {
+    public void sendRegularFile(String workerID, String filename) {
 		byte[] byteArrOfFile = null;
 		try {
 			Path myFile = Paths.get(filename);
@@ -275,14 +275,14 @@ public class Master extends Thread {
 			}
 			else if (line[0].equalsIgnoreCase("lf")) {
 				if (line.length == 3) {
-					sendFile(line[1], line[2]);
+					sendRegularFile(line[1], line[2]);
 				}
 				else {
 					System.out.printf("Enter worker ID:%n> ");
 					String wk = in.nextLine().trim();
 					System.out.printf("Enter filename:%n> ");
 					command = in.nextLine().trim();
-					sendFile(wk, command);
+					sendRegularFile(wk, command);
 				}
 			}
 			else if (line[0].equalsIgnoreCase("worker")) { //temp code, just to test WP2P communication
