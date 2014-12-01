@@ -215,9 +215,11 @@ public class Master extends Thread {
     }
     
     private void printFiles(int workerID) {
-    	List<String> l = IDtoFiles.get(workerID);
-    	for (String file : l) 
-    		System.out.println("  " + file);
+    	if (IDtoFiles.contains(workerID)) {
+    		List<String> l = IDtoFiles.get(workerID);
+    		for (String file : l) 
+    			System.out.println("  " + file);
+    	}
     }
 
     public synchronized void stopServer() {

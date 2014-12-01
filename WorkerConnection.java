@@ -42,7 +42,6 @@ public class WorkerConnection extends Thread {
     	}
     }
 
-    
     public void writeObjToWorker(final Object obj) {
     	try {
     		ObjectOutputStream objStream = new ObjectOutputStream(out);
@@ -54,7 +53,6 @@ public class WorkerConnection extends Thread {
     	}				
     }
 
-    
     public void writeWorker(final String arg) {
     	try {
     		out.write(arg.getBytes());
@@ -65,7 +63,6 @@ public class WorkerConnection extends Thread {
     	}				
     }
 
-    
     public void writeWorker(final byte... arg) {
     	try {
     		out.write(arg);

@@ -265,6 +265,7 @@ public class Worker implements Runnable {
 			break;
 		default:
 			System.err.println("Unrecognized Worker command: " + command);
+			this.closeConnection();
 			break;
 		}
     }
