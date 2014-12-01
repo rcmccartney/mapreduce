@@ -147,12 +147,7 @@ public class WorkerConnection extends Thread {
 		case Utils.W2M_KEYSHUFFLED:
 			master.mj.wShuffleCount++;
 			if(master.mj.wShuffleCount == master.workerQueue.size())
-				new Thread(new Runnable(){
-					public void run(){
-						master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
-					}
-					
-				}).start();
+				master.writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
 			break;
 		case Utils.W2M_RESULTS:
 			master.mj.receiveWorkerResults(readBytes());

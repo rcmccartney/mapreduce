@@ -1,16 +1,23 @@
 package mapreduce;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.net.UnknownHostException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -51,20 +58,12 @@ public class Master extends Thread {
     		wc.writeWorker(message);
     }
     
-    public synchronized WorkerConnection get(int workerID) {
-    	for (WorkerConnection wc : workerQueue)
-    		if (wc.id == workerID) 
-    			return wc;
-    	return null;
-    }
-    
-    
-    public void sendRegularFile(String workerID, String filename) {
+     public void sendRegularFile(String workerID, String filename) {
 		byte[] byteArrOfFile = null;
 		try {
 			Path myFile = Paths.get(filename);
 			byteArrOfFile = Files.readAllBytes(myFile);
-			WorkerConnection wk = this.get(Integer.parseInt(workerID));
+			WorkerConnection wk = this.getWCwithId(Integer.parseInt(workerID));
 			if (wk != null) {
 				wk.sendFile(myFile.getFileName().toString(), 
 							byteArrOfFile, Utils.M2W_FILE);
@@ -91,15 +90,20 @@ public class Master extends Thread {
 		try {
 			// TODO when jobs is already > 0 store this job for later
 			if (jobs == 0) {
-				String className = compile(filename);
+				File f1 = null, f2 = null;
+				if (!deleteAfter){
+					f1 = new File(filename);
+					f2 = new File(f1.getName());
+					copyFile(f1, f2);
+				}
+				String className = compile(f2.getName());
 				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
 				Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
 				mj = new MasterJob<>(mr,this);
 				Path myFile = Paths.get(className + ".class");
 				byteArrOfFile = Files.readAllBytes(myFile);
 				Files.delete(Paths.get(className + ".class"));
-				if (deleteAfter)
-					Files.delete(Paths.get(filename));
+				Files.delete(Paths.get(f2.getName()));
 				synchronized (this) {
 					for (WorkerConnection wc : workerQueue)
 						if(!wc.isStopped())
@@ -107,10 +111,36 @@ public class Master extends Thread {
 				}
 				System.err.println("...Finished sending MR job to worker nodes");
 			}
-		} catch (Exception e) {
-			System.err.println("Error reading MR file in Master node");
-			return;
+		} catch (IOException e) { 
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
 		}
+	}
+	
+	public static void copyFile(File sourceFile, File destFile) throws IOException {
+	    if(!destFile.exists()) {
+	        destFile.createNewFile();
+	    }
+	    FileChannel source = null;
+	    FileChannel destination = null;
+	    try {
+	        source = new FileInputStream(sourceFile).getChannel();
+	        destination = new FileOutputStream(destFile).getChannel();
+	        destination.transferFrom(source, 0, source.size());
+	    }
+	    finally {
+	    	if(source != null) {
+	    		source.close();
+	    	}
+	        if(destination != null) {
+	            destination.close();
+	        }
+	    }
 	}
 	
 	protected String compile(String filename){
@@ -127,15 +157,13 @@ public class Master extends Thread {
 		}
 	} 			
 	
-	public WorkerConnection getWCwithId(int id){
-    	// lock queue when iterating, assumes other threads lock on workerQueue too before using it
-    	synchronized (workerQueue) { 
-    		for (WorkerConnection wc : workerQueue)
-        		if (wc.id == id)
-        			return wc;
-        	return null;
-		}
-    }
+	public synchronized WorkerConnection getWCwithId(int id){
+		// lock queue when iterating, assumes other threads lock on workerQueue too before using it
+		for (WorkerConnection wc : workerQueue)
+			if (wc.id == id)
+				return wc;
+		return null;
+	}
     
     private synchronized int getJobs() {
     	return jobs;

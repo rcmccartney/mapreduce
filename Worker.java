@@ -61,8 +61,9 @@ public class Worker implements Runnable {
     		System.out.println("Worker " + socket);
             out = socket.getOutputStream();
             in = socket.getInputStream();
-            wP2P = new WorkerP2P(0, this); // use port + 1 for Wp2p
             id = in.read();  //first thing sent is worker ID
+            // using port + 1 for Wp2p ensures it is unique for multiple instances
+            wP2P = new WorkerP2P(Utils.DEF_WP2P_PORT+id, this); 
             basePath = Utils.basePath + File.separator + id;
         	baseDir = new File(basePath);
         	if (!baseDir.isDirectory())
@@ -129,6 +130,7 @@ public class Worker implements Runnable {
     		if (currentJob != null) 
     			currentJob.stopExecution();
     		Files.delete(Paths.get(baseDir.getPath()));
+    		wP2P.closeConnection();
     		socket.close();
     		in.close();
     		out.close();
@@ -147,8 +149,7 @@ public class Worker implements Runnable {
         return urlClassLoader;
     }
     
-	// TODO add it so User can send already compiled classes over byte stream
-	private Mapper<?, ?> loadMRFile(String classfile){		
+    private Mapper<?, ?> loadMRFile(String classfile){		
 		try {	
 			// need each worker to have its own directory in case it is running locally
 			// this requires the classpath to be changed
@@ -201,9 +202,8 @@ public class Worker implements Runnable {
     	if (path.isDirectory()) {
     		File[] filesList = path.listFiles();
     		writeMaster(filesList.length);
-    		for(int i=0;i<filesList.length;i++){
+    		for(int i=0;i<filesList.length;i++)
     			writeMaster(filesList[i].getName());
-    		}
     	}
     	else
     		writeMaster(0);
@@ -215,9 +215,6 @@ public class Worker implements Runnable {
 		case Utils.MR_QUIT:  //quit command
     		closeConnection();
     		break;
-		case Utils.M2W_KEYASSIGN:	
-			currentJob.receiveKeyAssignments();
-			break;
 		case Utils.M2W_COORD_KEYS:	
 			currentJob.receiveKeyAssignments();
 			break;

@@ -49,16 +49,12 @@ public class Job<K extends Serializable, V> {
 			thrs.get(thrs.size()-1).start();
 		}
 		// wait for all the threads to finish
-		for(Thread t: thrs){
-			try {
-				t.join();
+		for(Thread t: thrs) {
+			try { 
+				t.join(); 
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-		}
-		// TODO this is testing code to be removed,
-		for( K key : finalOut.keySet() ) {
-			System.out.println("key: " + key + " result: " + finalOut.get(key));
 		}
 		
 		//finalOut holds the results of this MR job, send it to Master
@@ -83,7 +79,8 @@ public class Job<K extends Serializable, V> {
 			emit(key, tmp.get(key));
 	}
 	
-	public void receiveKVAndAggregate (Object k, Object v){
+	@SuppressWarnings("unchecked")
+	public void receiveKVAndAggregate(Object k, Object v){
 		//wMinusOneCount++;
 		K key = (K)k; 
 		List<V> valList = (List<V>) v;
@@ -98,37 +95,25 @@ public class Job<K extends Serializable, V> {
 		System.out.println("List<Value>: " + valList); 
 	}
 	
+	@SuppressWarnings("unchecked")
 	public void receiveKeyAssignments() {
-		// need key, ip address, and port from Master to fwd your values there
-		// K key = mr.parse("F");
-		// TODO
-		
-		// Then send all the P2P traffic...
-		// P2P traffic should remove values from output as it is sent and add to it as it
-		// is received,
-		
-		//then once P2P is fished call this.reduce()
-		// so output has all the key - list of Values
+
 		try {
 			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
 			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
 			System.out.println("Received TMsgs: " + keyTransferMsgs);
-			//objInStream.close();
-			//List<Object[]> msgList = (List<Object[]>)Utils.gson.fromJson(br.readLine(), List.class);
-			for (Object[] o : keyTransferMsgs){
-				K k = (K)o[0];
+			for (Object[] o : keyTransferMsgs) {
+				K k = (K) o[0];
 				String peerAddress = (String) o[1]; 
-				Integer peerPort = (Integer) o[2]; //testing on same machine
+				Integer peerPort = (Integer) o[2]; 
 				List<V> v = mapOutput.get(k);
-				
 				mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
-
-				worker.wP2P.send(k, v, peerAddress, peerPort+1); //sends key and its value list as object[]
+				worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
 			}
 			//A worker sends this message, so that master can keep track of workers who are ready for reduce
 			worker.writeMaster(Utils.W2M_KEYSHUFFLED);   
+			objInStream.close();
 		} catch (IOException | ClassNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
@@ -148,7 +133,8 @@ public class Job<K extends Serializable, V> {
 	}
 	
 	public void sendResults() {
-		// TODO send results to Master
+		
+	
 	}
 	
 	public void stopExecution() {
