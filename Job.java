@@ -27,7 +27,7 @@ public class Job<K extends Serializable, V extends Serializable> {
 		finalOut = new HashMap<>();
 	}
 	
-	public void begin() {
+	public void begin() throws IOException {
 		
 		// since this is reading from a file don't do it in parallel,
 		// speed limit is reading from disk
@@ -40,7 +40,7 @@ public class Job<K extends Serializable, V extends Serializable> {
 		sendAllKeysToMaster();
 	}
 	
-	public void reduce() {
+	public void reduce() throws IOException {
 		ArrayList<Thread> thrs = new ArrayList<>();
 		for(final K key: mapOutput.keySet()) {
 			thrs.add(new Thread(new Runnable() {
@@ -109,32 +109,32 @@ public class Job<K extends Serializable, V extends Serializable> {
 				}
 			}
 			//A worker sends this message, so that master can keep track of workers who are ready for reduce
-			worker.writeMaster(Utils.W2M_KEYSHUFFLED);   
+			Utils.write(worker.out, Utils.W2M_KEYSHUFFLED);   
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();
 		}
 	}
 	
-	public void sendAllKeysToMaster() {
+	public void sendAllKeysToMaster() throws IOException {
 		//byte[] data;
 		for (K key: mapOutput.keySet()) {
-			worker.writeMaster(Utils.W2M_KEY);
+			Utils.write(worker.out, Utils.W2M_KEY, new Object[]{key, mapOutput.get(key).size()});
+			worker.in.read();  // wait for AWK
 			//data = Utils.concat(mr.getBytes(key), 
 			//		Utils.intToByteArray(mapOutput.get(key).size()));
 			//worker.writeMaster(data);
 			// otherwise data buffer reads into next message
 			//try { Thread.sleep(10); } catch (Exception e) {}
-			worker.writeObjToMaster(new Object[]{key, mapOutput.get(key).size()});
 		}
-		worker.writeMaster(Utils.W2M_KEY_COMPLETE);
+		Utils.write(worker.out, Utils.W2M_KEY_COMPLETE);
 	}
 	
-	public void sendResults() {
+	public void sendResults() throws IOException {
 		for (Map.Entry<K, V> e : finalOut.entrySet()) {
-			worker.writeMaster(Utils.W2M_RESULTS);
-			worker.writeObjToMaster(new Object[]{e.getKey(), e.getValue()});
+			Utils.write(worker.out, Utils.W2M_RESULTS, new Object[]{e.getKey(), e.getValue()});
+			worker.in.read();  // wait for AWK
 		}
-		worker.writeMaster(Utils.W2M_JOBDONE);
+		Utils.write(worker.out, Utils.W2M_JOBDONE);
 	}
 	
 	public void stopExecution() {

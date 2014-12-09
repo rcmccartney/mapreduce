@@ -1,7 +1,5 @@
 package mapreduce;
 
-import java.io.BufferedOutputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -11,77 +9,74 @@ import java.util.List;
 
 public class ClientListener extends Thread {
 	
+	private static int connections = 0;
+	
 	protected ServerSocket clientSocket;
 	protected Master master;
 	protected InputStream in;
 	protected OutputStream out;
 	protected String MRFileName;
-	protected static int connections = 0;
+	protected boolean stopped;
 	
 	public ClientListener(Master m) throws IOException {
 		clientSocket = new ServerSocket(Utils.DEF_CLIENT_PORT);
 		this.master = m;
+		this.stopped = false;
 	}
 	
-	private String receiveFileFromClient() {
-		System.err.print("...Receiving MR job from Client node: ");
-		try{
-			// the first thing sent will be the filename
-			int f;
-			String name = "";
-			while( (f = in.read()) != '\n') {
-				name += (char) f;
-			}
-			int totalBytes = 0;
-			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(name));
-			while (true){
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				totalBytes += bytesRead;
-				if (bytesRead <= 0) break;
-				bos.write(mybytearray, 0, bytesRead);
-				if (bytesRead < 1024) break;
-			}
-			System.err.printf("%d bytes read%n", totalBytes);
-			bos.close();
-			return name;
-		} catch (IOException e) {
-			System.err.println("Exception while receiving file from Client: " + e);
-			return null;
-		}
+	protected synchronized boolean isStopped() {
+		return stopped;
 	}
-	
+
+	public synchronized void closeConnection() {
+		stopped = true;
+    	try {
+    		if (!clientSocket.isClosed()) {
+    			// don't use writeWorker since that will call close recursively
+    			out.write(Utils.MR_QUIT); 
+    			out.flush();
+    		}
+    		in.close();
+    		out.close();
+			clientSocket.close();
+    	} catch (IOException e) { }  //ignore exceptions since you are closing it anyways
+    }
+
 	public void run() {
-		while(true) {
+		while(!isStopped()) {
 			try {
 				Socket client = this.clientSocket.accept();
 				System.out.println("Client connected: " + client);
 				in = client.getInputStream();
 				out = client.getOutputStream();
 				out.write(++connections);  //client waits for an ID
-
-				boolean cont = true;
-				while (cont) {
+				// boolean for this single client connection
+				boolean currConnection = true;
+				while (currConnection) {
 					int cmd;
-					if ((cmd = in.read()) != 0) { //commands are one byte
+					if ((cmd = in.read()) != -1) { //commands are one byte
 						switch(cmd) {
 						case Utils.C2M_UPLOAD:	
-							MRFileName = receiveFileFromClient();
+							// receive it in current directory
+							MRFileName = Utils.receiveFile(in, "");
+							out.write(Utils.AWK);
+							// don't quit current connection, Client can send more files
 							break;
 						case Utils.C2M_UPLOAD_FILES:
-							List<String> filesToUse = master.getFilesList(in);
-							master.setMRJob(MRFileName, filesToUse, true);
-							cont = false;
+							List<String> filesToUse = Utils.getFilesList(in);
+							// false bc it is an external connection
+							master.setMRJob(MRFileName, filesToUse, false);
+							currConnection = false;
 							break;
 						default:
-							System.out.println("invalid command received at Client");
-							cont = false;
+							System.out.println("Invalid command received at Client: " + cmd);
+							currConnection = false;
 							break;
 						}
 					}
 				} 
 			} catch (IOException e) {
-				throw new RuntimeException("Error accepting client connections", e);
+				throw new RuntimeException("Error accepting client connections: ", e);
 			}
 		}
 	}

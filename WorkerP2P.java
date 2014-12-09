@@ -4,13 +4,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * This class' object is used by the worker to communicate with other worker peers.
@@ -22,13 +19,12 @@ public class WorkerP2P extends Thread {
 	protected ServerSocket workerServerSocket;
 	protected Worker worker;
     protected int port; //This is the port used at src and dest. Since all W_P2P communications assume this port
-    protected ExecutorService exec; //Thread pool to use to send data out asynchronously
-    protected boolean stopRun = false;
+    protected boolean stopRun;
     
     public WorkerP2P(int port, Worker worker) throws IOException {
-    	this.exec = Executors.newCachedThreadPool();
-    	this.port = port;   // == -1 ? Utils.DEF_WP2P_PORT: port;
-    	workerServerSocket = new ServerSocket(this.port);
+    	this.stopRun = false;
+    	this.port = port;   
+    	this.workerServerSocket = new ServerSocket(this.port);
     	this.worker = worker;
     	this.setDaemon(true);
     	this.start();
@@ -50,8 +46,7 @@ public class WorkerP2P extends Thread {
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if(stopRun) return; //cuz if we intended to stop the server
-			System.out.println("IOException in RecNotifThread:run()");
-			System.out.println(e);
+			System.out.println("IOException in WorkerP2P: " + e);
 		}
 	}
     
@@ -68,10 +63,10 @@ public class WorkerP2P extends Thread {
 		try {
 			System.out.println("Sending " + key + ":" + values + " to " + peerAddress + ":" + port);
 			Socket socket = new Socket(peerAddress, port);
-			System.out.println(socket);
-			OutputStream out = socket.getOutputStream();
-			ObjectOutputStream objOutStream = new ObjectOutputStream(out);
+			ObjectOutputStream objOutStream = new ObjectOutputStream(socket.getOutputStream());
 			objOutStream.writeObject(new Object[]{key, values});
+			objOutStream.close();
+			socket.close();
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -86,14 +81,12 @@ public class WorkerP2P extends Thread {
 		stopRun = true;
 		try {
 			workerServerSocket.close();
-			exec.shutdown();
 		} catch (IOException e) {
-			System.out.println("IOException in RecNotifThread:stopRecNotif()");
-			System.out.println(e);
+			System.out.println("IOException in closing WorkerP2P connection: " + e);
 		}
 	}
 	
-	// each worker is on a unique port
+	// each worker is on a unique port, can use this for equality testing
 	public boolean equals(String peerAddress, Integer peerPort) {
 		return workerServerSocket.getLocalPort() == peerPort;
 	}

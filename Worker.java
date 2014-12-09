@@ -5,12 +5,9 @@ package mapreduce;
 //Unit:    Distributed Programming Group Project
 //******************************************************************************
 
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
@@ -64,78 +61,23 @@ public class Worker implements Runnable {
     		socket = new Socket(hostName, port);
             out = socket.getOutputStream();
             in = socket.getInputStream();
-            id = in.read();  //first thing sent is worker ID
+            id = in.read();  //first thing sent is worker/client ID
     		System.out.println("Worker " + id + ": " + socket);
             // using port + 1 for Wp2p ensures it is unique for multiple instances
             this.client = client;
             if (!client) {
             	wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this); 
-            	writeMaster(Utils.W2M_WP2P_PORT);
-            	try { Thread.sleep(10); } catch (Exception e) {}
-            	writeMaster(Utils.intToByteArray(wP2P.port)); 
+            	Utils.write(out, Utils.W2M_WP2P_PORT, Utils.intToByteArray(wP2P.port)); 
             	basePath = Utils.basePath + File.separator + id;
             	baseDir = new File(basePath);
             	if (!baseDir.isDirectory())
             		baseDir.mkdirs();
+                new Thread(this).start();  //start a thread to read from the Master
             }
-            new Thread(this).start();  //start a thread to read from the Master
 		} catch (Exception e) {
 			System.out.println("Cannot connect to the Master server at this time.");
 			System.out.println("Did you specify the correct hostname and port of the server?");
 		}
-    }
-    
-    public void writeMaster(String arg, byte... barg) {
-    	try {
-    		byte[] barr = Utils.concat(arg.getBytes(), barg);
-    		out.write(barr);
-    		out.flush();
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
-    }
-    
-    public void writeMaster(String arg) {
-    	try {
-    		out.write(arg.getBytes());
-    		out.flush();
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
-    }
-    
-    public void writeMaster(byte... arg) {
-    	try {
-    		out.write(arg);
-    		out.flush();
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
-    }
-
-    // this was messing up writing a single byte
-    public void writeMaster(int arg) {
-    	try {
-    		out.write(arg);
-    		out.flush();
-    	} catch (IOException e) {
-    		System.err.println("Error writing to Master: closing connection.");
-    		this.closeConnection();
-    	}
-    }
-   
-    public void writeObjToMaster(final Object obj) {
-    	try {
-    		ObjectOutputStream objStream = new ObjectOutputStream(out);
-    		objStream.writeObject(obj);
-    		objStream.flush();
-    	} catch (IOException e) {
-    		System.err.printf("Error writing to Worker %d: closing connection%n", id);
-    		closeConnection();
-    	}				
     }
     
     public synchronized boolean isStopped() {
@@ -155,9 +97,9 @@ public class Worker implements Runnable {
     			Files.deleteIfExists(Paths.get(baseDir.getPath()));
     			wP2P.closeConnection();
     		}
-    		socket.close();
     		in.close();
     		out.close();
+    		socket.close();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
     
@@ -187,53 +129,24 @@ public class Worker implements Runnable {
 			System.err.println("Exception loading or compiling the File: " + e);
 			return null;
 		}
-	} 			
-    
-	private String receiveFile(){
-		try {
-			// the first thing sent will be the filename
-			int f;
-			String name = "";
-			while( (f = in.read()) != '\n') {
-				name += (char) f;
-			}
-			// now read the actual byte array
-			byte[] mybytearray = new byte[1024];
-			BufferedOutputStream bos = new BufferedOutputStream(
-					new FileOutputStream(basePath + File.separator + name));
-			int totalCount = 0;
-			while(true) {
-				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
-				totalCount += bytesRead;
-				if (bytesRead <= 0) break;
-				bos.write(mybytearray, 0, bytesRead);
-				if (bytesRead < 1024) break;
-			}
-			System.out.printf("%s %d bytes downloaded%n", name, totalCount);
-			bos.close();
-			return name;
-		} catch (IOException e) {
-    		System.err.println("Error receiving file from Master: closing connection.");
-    		this.closeConnection();
-    		return null;
-		}
 	}
 	
 	/*Function to send filesList to Master
      * Path of default directory is in Utils
      */
-    public void sendFilesList(File path){
+    public void sendFilesList(File path) {
     	if (path.isDirectory()) {
     		File[] filesList = path.listFiles();
-    		writeMaster(filesList.length);
-    		for(int i=0;i<filesList.length;i++)
-    			writeMaster(filesList[i].getName());
+    		String[] names = new String[filesList.length];
+    		for(int i=0; i<filesList.length; i++)
+    			names[i] = filesList[i].getName();
+        	Utils.write(out, Utils.M2W_REQ_LIST_OKAY, names);
     	}
     	else
-    		writeMaster(0);
+    		Utils.write(out, Utils.M2W_REQ_LIST_OKAY, 0);
     }
     
-    public void receive(int command) {
+    public void receive(int command) throws IOException {
 
 		switch(command) {
 		case Utils.MR_QUIT:  //quit command
@@ -248,7 +161,7 @@ public class Worker implements Runnable {
 		case Utils.M2W_MR_UPLOAD:
 			// TODO filesystem that can take in actual file names instead of using all data there
 			System.out.print("Worker received new MR job: ");
-			Mapper<?, ?> mr = loadMRFile(receiveFile());
+			Mapper<?, ?> mr = loadMRFile(Utils.receiveFile(in, basePath + File.separator));
 			if (mr != null) {
 				ArrayList<String> names = new ArrayList<String>(Arrays.asList(baseDir.list()));
 				currentJob = new Job<>(this, mr, names);
@@ -256,11 +169,9 @@ public class Worker implements Runnable {
 			}
 			break;	
 		case Utils.M2W_FILE:
-			System.out.print("Worker received new file: ");
-			receiveFile();
+			Utils.receiveFile(in, basePath + File.separator);
 			break;
 		case Utils.M2W_REQ_LIST:  // master is requesting file list
-			writeMaster(Utils.M2W_REQ_LIST_OKAY);
 			sendFilesList(baseDir);
 			break;
 		default:
@@ -274,7 +185,7 @@ public class Worker implements Runnable {
     	int command;
     	while(!isStopped()) {
     		try {
-    			if ((command = in.read()) != 0)
+    			if ((command = in.read()) != -1)
     				this.receive(command);
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed

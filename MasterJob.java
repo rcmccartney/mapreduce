@@ -102,7 +102,7 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 		for (K key : key_workers_map.keySet()){
 			Object[] transferMessage = new Object[]{key,  //contains key, ipaddress and port to send 
 					master.workerQueue.get(wQIdx).clientSocket.getInetAddress().getHostAddress(),
-					master.workerIDAndPorts.get(master.workerQueue.get(wQIdx).id)}; 
+					master.workerIDToPort.get(master.workerQueue.get(wQIdx).id)}; 
 			for (Integer wId : key_workers_map.get(key)){
 				if (worker_messages_map.containsKey(wId)) {
 					worker_messages_map.get(wId).add(transferMessage);
@@ -118,10 +118,18 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 				++wQIdx;
 			}
 		} //worker_messages_map populated
-		for (Map.Entry<Integer, List<Object[]>> entry : worker_messages_map.entrySet()){
-			WorkerConnection wc = master.getWCwithId(entry.getKey());
+		/*
+		 * for (WorkerConnection wc : master.workerQueue){
 			wc.writeWorker(Utils.M2W_COORD_KEYS);
-			wc.writeObjToWorker(entry.getValue());
+			if (worker_messages_map.get(wc.id) == null) 
+				worker_messages_map.put(wc.id, new ArrayList<Object[]>());
+			else 
+				wc.writeObjToWorker(worker_messages_map.get(wc.id));
+		}
+		 */
+		for (Map.Entry<Integer, List<Object[]>> entry : worker_messages_map.entrySet()) {
+			WorkerConnection wc = master.getWCwithId(entry.getKey());
+			Utils.write(wc.out, Utils.M2W_COORD_KEYS, entry.getValue());
 		}
 	}
 
