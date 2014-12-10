@@ -215,8 +215,9 @@ public class Master extends Thread {
 				// load the bytes of the compiled class and send it across the sockets to all workers
 				final Path myFile = Paths.get(className + ".class");
 				final byte[] byteArrOfFile = Files.readAllBytes(myFile);
-				Files.delete(Paths.get(className + ".class"));
-				Files.delete(Paths.get(f2.getName()));
+				// TODO change master classpath so client can run locally w/o deleting files
+				//Files.delete(Paths.get(className + ".class"));
+				//Files.delete(Paths.get(f2.getName()));
 				synchronized (queueLock) {
 					for (final WorkerConnection wc : workerQueue) {
 						exec.execute(new Runnable() {

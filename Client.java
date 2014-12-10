@@ -29,7 +29,12 @@ public class Client extends SocketClient {
 		
 	public static void main(String[] args) {
 		//send a file from Desktop to the Master
-		String[] clientArgs = { "-port", ""+Utils.DEF_CLIENT_PORT };
-		new Client(clientArgs).sendJob("\\Jobs\\MRTest.java", "here", "there"); 
+		String file = args[0];
+		String[] clientArgs = new String[args.length+1];
+		for(int i = 1; i < args.length; i++)
+			clientArgs[i-1] = args[i];
+		clientArgs[args.length-1] = "-port";
+		clientArgs[args.length] = ""+Utils.DEF_CLIENT_PORT;
+		new Client(clientArgs).sendJob(file, "data_5489.txt", "data_5459.txt"); 
 	}
 }

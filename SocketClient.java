@@ -36,6 +36,7 @@ public class SocketClient {
 		catch (Exception e) {
 			System.out.println("Cannot connect to the server at this time");
 			System.out.println("Verify that you have the correct hostname and port");
+			System.exit(1);
 		}
     }
 

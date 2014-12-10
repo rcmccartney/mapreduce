@@ -7,6 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
@@ -14,8 +15,8 @@ public class Job<K extends Serializable, V extends Serializable> {
 
 	protected Worker worker;
 	protected Mapper<K, V> mr;
-	protected HashMap<K, List<V>> mapOutput;
-	protected HashMap<K, V> finalOut;
+	protected Map<K, List<V>> mapOutput;
+	protected Map<K, V> finalOut;
 	protected List<String> files;
 	
 	public Job(Worker worker, Mapper<K, V> mr, List<String> data) {
@@ -23,8 +24,8 @@ public class Job<K extends Serializable, V extends Serializable> {
 		this.mr = mr;
 		this.mr.setJob(this);
 		files = data;
-		mapOutput = new HashMap<>();
-		finalOut = new HashMap<>();
+		mapOutput = new Hashtable<>();
+		finalOut = new Hashtable<>();
 	}
 	
 	public void begin() throws IOException {
