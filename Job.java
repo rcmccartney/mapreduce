@@ -5,8 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -16,9 +16,9 @@ public class Job<K extends Serializable, V extends Serializable> {
 	protected Mapper<K, V> mr;
 	protected HashMap<K, List<V>> mapOutput;
 	protected HashMap<K, V> finalOut;
-	protected ArrayList<String> files;
+	protected List<String> files;
 	
-	public Job(Worker worker, Mapper<K, V> mr, ArrayList<String> data) {
+	public Job(Worker worker, Mapper<K, V> mr, List<String> data) {
 		this.worker = worker;
 		this.mr = mr;
 		this.mr.setJob(this);
@@ -41,7 +41,7 @@ public class Job<K extends Serializable, V extends Serializable> {
 	}
 	
 	public void reduce() throws IOException {
-		ArrayList<Thread> thrs = new ArrayList<>();
+		List<Thread> thrs = new ArrayList<>();
 		for(final K key: mapOutput.keySet()) {
 			thrs.add(new Thread(new Runnable() {
 				public void run() {

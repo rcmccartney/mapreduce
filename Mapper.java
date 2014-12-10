@@ -9,6 +9,11 @@ public abstract class Mapper<K extends Serializable, V extends Serializable> {
 	
 	private Job<K, V> job;
 	
+	public void preProcess() {}
+	
+	public void postProcess() {}
+	
+	// TODO possibly use 2 sets of key, values
 	public abstract HashMap<K, V> map(File resource);
 	
 	public abstract V reduce(K key, List<V> listOfValues);

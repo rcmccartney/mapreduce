@@ -22,15 +22,16 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 	// Map b/w WorkerId (Integer) and List of Transfer Messages for this workerId 
 	// i.e List<<Key, AddressOfWorkerPeer>>
 	protected Map<Integer, List<Object[]>> worker_messages_map; 
+	protected List<String> files;
 	
-	
-	public MasterJob(Mapper<K, V> mr, Master master) {
+	public MasterJob(Mapper<K, V> mr, Master master, List<String> files) {
 		this.master = master;
 		currentJob = mr;
 		keyCounts = new HashMap<>();
 		key_workers_map = new HashMap<>();
 		worker_messages_map = new HashMap<>();
 		results = new HashMap<>();
+		this.files = files;
 	}
 
 	public void storeKeyToWorker(K key, int workerID) {

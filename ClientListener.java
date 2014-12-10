@@ -69,14 +69,15 @@ public class ClientListener extends Thread {
 							currConnection = false;
 							break;
 						default:
-							System.out.println("Invalid command received at Client: " + cmd);
+							System.err.println("Invalid command received at Client: " + cmd);
 							currConnection = false;
 							break;
 						}
 					}
 				} 
 			} catch (IOException e) {
-				throw new RuntimeException("Error accepting client connections: ", e);
+				System.err.println("Error while accepting client connections: " + e);
+				//this.closeConnection();
 			}
 		}
 	}

@@ -45,8 +45,8 @@ public class Utils {
 			W2M_REDUCEDKV = 17,
 			W2M_JOBDONE = 18,
 			M2W_DATA_USAGE = 19,
-			AWK = 20;
-
+			AWK = 20,
+			AWK_MR = 21;
 	
 	//Path for flat directory, where each worker stores files
 	public static final String basePath = "temp/";
@@ -217,6 +217,17 @@ public class Utils {
 			System.err.printf("Error writing to OutputStream: " + e);
 		}
 	}
+	
+	public static void write(OutputStream out, String[] args) {
+		try {
+			out.write(args.length);  //won't work for > 1 byte of Strings
+			for (String s : args)
+				out.write((s + "\n").getBytes());
+			out.flush();
+		} catch (IOException e) {
+			System.err.printf("Error writing to OutputStream: " + e);
+		}
+	}
 
     public static void write(OutputStream out, byte command, Object obj) {
     	try {
@@ -249,7 +260,7 @@ public class Utils {
     	}				
     }
     
-    public static void writeCommand(OutputStream out, byte command) {
+    public static void write(OutputStream out, byte command) {
     	try {
 			out.write(command);
     		out.flush();
@@ -258,7 +269,7 @@ public class Utils {
     	}				
     }
     
-    // this was messing up writing a single byte
+    // this writes only a single byte of the int
     public static void write(OutputStream out, byte command, int arg) {
     	try {
 			out.write(command);
@@ -269,6 +280,7 @@ public class Utils {
     	}
     }
     
+    //this writes all four bytes of the int
     public static void writeInt(OutputStream out, byte command, int arg) {
     	Utils.write(out, command, intToByteArray(arg));
     }

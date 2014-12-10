@@ -46,7 +46,7 @@ public class WorkerConnection extends Thread {
     }
     
     public String toString() {
-    	return "Worker " + this.id + ": " + clientSocket.toString();
+    	return "WorkerConnection " + id + ": " + clientSocket.toString();
     }
     
 	public void sendFile(byte transferType, String name, byte[] bArr) {
@@ -68,7 +68,7 @@ public class WorkerConnection extends Thread {
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
 					return;
-				System.err.printf("Error in socket connection to Worker %d: removing worker from cluster%n", id);
+				System.err.printf("Error in socket connection to Worker " + id + ": " + e);
 				this.closeConnection();
 			}
     	}

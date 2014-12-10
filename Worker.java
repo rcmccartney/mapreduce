@@ -7,11 +7,7 @@ package mapreduce;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.Method;
-import java.net.InetAddress;
-import java.net.Socket;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -19,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * This class parses command-line input in order to register client as a worker in a 
@@ -29,14 +26,8 @@ import java.util.Arrays;
  * 
  * @author rob mccartney
  */
-public class Worker implements Runnable {
+public class Worker extends SocketClient implements Runnable {
 
-	protected String hostName = ""; 
-	protected int id;
-	protected int port = Utils.DEF_MASTER_PORT;
-	protected Socket socket;
-	protected OutputStream out;
-	protected InputStream in;
 	//stopped is used by multiple threads, must be synchronized
 	protected boolean stopped = false;
 	protected Job<?, ?> currentJob;
@@ -52,54 +43,39 @@ public class Worker implements Runnable {
      * 
      * @param args String[] from the command line
      */
-    public Worker(String[] args, boolean client) {
-    	if (args.length > 0)  
-    		parseArgs(args);
+    public Worker(String[] args) {
+    	super(args);
     	try {
-    		if (hostName.length() == 0) 
-    			hostName = InetAddress.getLocalHost().getHostAddress();
-    		socket = new Socket(hostName, port);
-            out = socket.getOutputStream();
-            in = socket.getInputStream();
-            id = in.read();  //first thing sent is worker/client ID
-    		System.out.println("Worker " + id + ": " + socket);
-            // using port + 1 for Wp2p ensures it is unique for multiple instances
-            this.client = client;
-            if (!client) {
-            	wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this); 
-            	Utils.write(out, Utils.W2M_WP2P_PORT, Utils.intToByteArray(wP2P.port)); 
-            	basePath = Utils.basePath + File.separator + id;
-            	baseDir = new File(basePath);
-            	if (!baseDir.isDirectory())
-            		baseDir.mkdirs();
-                new Thread(this).start();  //start a thread to read from the Master
-            }
-		} catch (Exception e) {
-			System.out.println("Cannot connect to the Master server at this time.");
-			System.out.println("Did you specify the correct hostname and port of the server?");
-		}
+			wP2P = new WorkerP2P(Utils.BASE_WP2P_PORT+id, this);
+		} catch (IOException e) {
+			System.err.println("Cannot open P2P socket: " + e);
+			this.closeConnection();
+		} 
+    	// inform Master of your P2P port number
+    	Utils.write(out, Utils.W2M_WP2P_PORT, Utils.intToByteArray(Utils.BASE_WP2P_PORT+id)); 
+    	basePath = Utils.basePath + File.separator + id;
+    	baseDir = new File(basePath);
+    	if (!baseDir.isDirectory())
+    		baseDir.mkdirs();
+    	new Thread(this).start();  //start a thread to read from the Master
     }
-    
+ 
     public synchronized boolean isStopped() {
     	return stopped;
     }
     
     public String toString() {
-    	return socket.toString();
+    	return "Worker " + id + ": " + socket.toString();
     }
 
     public synchronized void closeConnection() {
+    	super.closeConnection();
     	stopped = true;
+    	if (currentJob != null) 
+    		currentJob.stopExecution();
     	try {
-    		if (currentJob != null) 
-    			currentJob.stopExecution();
-    		if (!client) {
-    			Files.deleteIfExists(Paths.get(baseDir.getPath()));
-    			wP2P.closeConnection();
-    		}
-    		in.close();
-    		out.close();
-    		socket.close();
+        	Files.deleteIfExists(Paths.get(baseDir.getPath()));
+    		wP2P.closeConnection();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
     }
     
@@ -146,11 +122,18 @@ public class Worker implements Runnable {
     		Utils.write(out, Utils.M2W_REQ_LIST_OKAY, 0);
     }
     
+    /**
+     * This method is the heart of the Worker class, where it does all the 
+     * communication back and forth to the Master
+     * 
+     * @param command byte read in from the socket
+     * @throws IOException
+     */
     public void receive(int command) throws IOException {
 
 		switch(command) {
 		case Utils.MR_QUIT:  //quit command
-    		closeConnection();
+    		this.closeConnection();
     		break;
 		case Utils.M2W_COORD_KEYS:	
 			currentJob.receiveKeyAssignments(in);
@@ -159,11 +142,13 @@ public class Worker implements Runnable {
 			currentJob.reduce();
 			break;	
 		case Utils.M2W_MR_UPLOAD:
-			// TODO filesystem that can take in actual file names instead of using all data there
 			System.out.print("Worker received new MR job: ");
 			Mapper<?, ?> mr = loadMRFile(Utils.receiveFile(in, basePath + File.separator));
 			if (mr != null) {
-				ArrayList<String> names = new ArrayList<String>(Arrays.asList(baseDir.list()));
+				Utils.write(out, Utils.AWK_MR);  // notify master, next message received is the file listing
+				List<String> names = Utils.getFilesList(in);
+				if (names.size() == 0)  // Master sent nothing, use all local files
+					names = new ArrayList<String>(Arrays.asList(baseDir.list()));
 				currentJob = new Job<>(this, mr, names);
 				currentJob.begin();
 			}
@@ -176,7 +161,6 @@ public class Worker implements Runnable {
 			break;
 		default:
 			System.err.println("Unrecognized Worker command: " + command);
-			this.closeConnection();
 			break;
 		}
     }
@@ -190,41 +174,17 @@ public class Worker implements Runnable {
 			} catch (IOException e) {
 				if (isStopped()) // exception is expected when the connection is first closed
 					return;
-				System.err.println("Error in socket connection to Master: closing connection");
+				System.err.println("Error in socket connection to Master: " + e);
 				this.closeConnection();
 			}
     	}
     }
     
-    /**
-	 * This method parses any inputs for the port to use, and stores it into
-	 * the instance variable prior to the constructor
-	 * 
-	 * @param args passed in on command line
-	 */
-	private void parseArgs(String args[]) {
-		
-		for (int i = 0; i < args.length; i ++) {	
-			if (args[i].equals("-port")) 
-				port = new Integer(args[++i]).intValue();
-			else if (args[i].equals("-host")) 
-				hostName = args[++i];
-			else {
-				System.out.println("Correct usage: java Worker [-host <hostName>] [-p <portnumber>] [");
-				System.out.println("\t-host: override localhost to set the host to <hostName>.");
-				System.out.println("\t-port: override default port 40001 to <port>.  "
-						+ "\n\t<host> and <port> must match the Master Server's.");
-				System.exit(1);
-			}
-		}
-	}
-	
 	/**
 	 * @param args for hostname or port to not be default
-	 * @throws RemoteException 
 	 */
 	public static void main(String[] args) {
-		new Worker(args, false);
+		new Worker(args);
 	}
 }
 

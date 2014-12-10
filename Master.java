@@ -4,20 +4,16 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,14 +42,13 @@ public class Master extends Thread {
 	protected boolean stopped;
 	protected int jobs;
 	protected List<WorkerConnection> workerQueue; 
+	protected Object queueLock = new Object();
 	// Hashtable is synchronized for multiple worker sends
 	// stores map from Worker to Port for W2W comms
 	protected Map<Integer, Integer> workerIDToPort;
-	
 	// this is the file server portion of Master
-	private Map<Integer, List<String>> IDtoFiles;
-	private Map<String, Integer> filesToID;
-	private Object queueLock = new Object();
+	protected Map<Integer, List<String>> IDtoFiles;
+	protected Map<String, Integer> filesToID;
 	
 	/**
 	 * 
@@ -61,14 +56,14 @@ public class Master extends Thread {
 	 * @throws IOException if the socket connections throw an exception
 	 */
 	public Master(String[] args) throws IOException	{
+		if (args.length > 0)
+			parseArgs(args);
 		stopped = false;
 		jobs = 0;
 		workerQueue = new ArrayList<>();
 		filesToID = new Hashtable<>();
 		IDtoFiles = new Hashtable<>();
 		workerIDToPort = new Hashtable<>();
-		if (args.length > 0)
-			parseArgs(args);
 		serverSocket = new ServerSocket(port);
 		exec = Executors.newCachedThreadPool();
 		// listen for Client connection sending a file
@@ -82,7 +77,7 @@ public class Master extends Thread {
 	 * 
 	 * @return boolean if this socket is stoppped or not 
 	 */
-    private synchronized boolean isStopped() {
+    protected synchronized boolean isStopped() {
         return stopped;
     }
     
@@ -96,7 +91,7 @@ public class Master extends Thread {
 	    	for (final WorkerConnection wc : workerQueue) {
 	    		exec.execute(new Runnable() {
 	    			public void run() {
-	    				Utils.writeCommand(wc.out, message);				
+	    				Utils.write(wc.out, message);				
 	    			}
 	    		});
 	    	}
@@ -111,10 +106,9 @@ public class Master extends Thread {
      * @param filename the String name of the file being sent
      */
     public void sendRegularFile(String filename, String workerID) {
-    	byte[] byteArrOfFile = null;
 		try {
 			Path myFile = Paths.get(filename);
-			byteArrOfFile = Files.readAllBytes(myFile);
+			byte[] byteArrOfFile = Files.readAllBytes(myFile);
 			WorkerConnection wk = this.getWCwithId(Integer.parseInt(workerID));
 			if (wk != null) {
 				wk.sendFile(Utils.M2W_FILE, myFile.getFileName().toString(), byteArrOfFile);
@@ -123,10 +117,10 @@ public class Master extends Thread {
 			else 
 				System.err.printf("%s is not in the cluser%n", workerID);
 		} catch (NumberFormatException n) {
-			System.err.println("Not a valid worker ID");
+			System.err.println("Not a valid worker ID: " + n);
 		}
 		catch (IOException e) {
-			System.err.println("Error reading file in Master node");
+			System.err.println("Error reading file in Master node: " + e);
 		}
     }
     
@@ -143,10 +137,11 @@ public class Master extends Thread {
 			break;
 		case Utils.W2M_KEY:
 			mj.receiveWorkerKey(in, wkID);
-			Utils.write(out, Utils.AWK);
+			Utils.write(out, Utils.AWK);  // worker waits for Awk before sending again
 			break;
 		case Utils.W2M_KEY_COMPLETE:
 			//TODO: change wCount to compare with current actual # of workers on this job 
+			//		with a valid timeout
 			mj.wCount++;
 			if (mj.wCount == workerQueue.size()) // master now has all the keys from the workers
 				mj.coordinateKeysOnWorkers();
@@ -167,8 +162,17 @@ public class Master extends Thread {
 			if (mj.wDones == workerQueue.size())
 				mj.printResults();
 			break;
+		case Utils.AWK_MR:  //worker has awknowledged receiving MR job, need to send his files
+			ArrayList<String> contains = new ArrayList<>();
+			for(String file: mj.files) 
+				if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
+					contains.add(file);
+			String[] files = new String[contains.size()];
+			files = contains.toArray(files);
+			Utils.write(out, files);
+			break;
 		default:
-			System.err.println("Invalid command received on WorkerConnection: " + command);
+			System.err.println("Invalid command received on WorkerConnection " + wkID + ": " + command);
 			break;
 		}
 	} 
@@ -207,7 +211,7 @@ public class Master extends Thread {
 				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
 				Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
 				// mj gets the class information generically from Mapper
-				mj = new MasterJob<>(mr, this);
+				mj = new MasterJob<>(mr, this, filesToUse);
 				// load the bytes of the compiled class and send it across the sockets to all workers
 				final Path myFile = Paths.get(className + ".class");
 				final byte[] byteArrOfFile = Files.readAllBytes(myFile);
@@ -225,6 +229,9 @@ public class Master extends Thread {
 				}
 				System.out.println("...Finished sending MR job to worker nodes");
 			}
+			else {
+				//TODO >0 jobs
+			}
 		} catch (IOException e) { 
 			e.printStackTrace();
 		} catch (ClassNotFoundException e) {
@@ -236,18 +243,6 @@ public class Master extends Thread {
 		}
 	}
 	
-	/* TODO
-	private void notificationOfData(List<String> filesToUse) {
-		
-		if (filesToUse.size() > 0) {
-			for(String file : filesToUse ) {
-				WorkerConnection wk = getWCwithId( filesToID.get(file) );
-				wk.writeWorker(Utils.M2W_DATA_USAGE);
-				
-			}
-		}
-	}*/ 
-
 	/**
 	 * Compiles a filename into a java class and returns the String classname
 	 * 
@@ -295,7 +290,7 @@ public class Master extends Thread {
 	 * 
 	 * @return number of jobs
 	 */
-    private synchronized int getJobs() {
+    protected synchronized int getJobs() {
     	return jobs;
     }
     
@@ -381,148 +376,11 @@ public class Master extends Thread {
         System.out.println("Master server stopped") ;
 	}
 	
-    private void printFiles(int workerID) {
-    	if (IDtoFiles.containsKey(workerID)) {
-    		List<String> l = IDtoFiles.get(workerID);
-    		for (String file : l) 
-    			System.out.println("  " + file);
-    	}
-    }
-	
-	////////////////////////////////////////////////////////////////////////////////////
-	//  Command-line interface services 
-	////////////////////////////////////////////////////////////////////////////////////
-	/**
-	 * This is how a user interacts with the Master node of the system.  
-	 * It is run by the main thread of execution
-	 * @throws UnknownHostException 
-	 * 
-	 */
-	protected void commandLineInterface() throws UnknownHostException {
-		System.out.println("#################################################");
-		System.out.println("#\t\tMAP-REDUCE FRAMEWORK\t\t#");
-		System.out.println("#\t\t\t\t\t\t#");
-		System.out.println("# Server:"+InetAddress.getLocalHost().getHostAddress()+"\t\t\t\t#");
-		System.out.println("# Port:"+port+"\t\t\t\t\t#");	
-		System.out.println("# Type help or man to view the man pages\t#");
-		System.out.println("#\t\t\t\t\t\t#");
-		System.out.println("#################################################");
-		Scanner input = new Scanner(System.in);
-		do {
-			System.out.print("> ");
-			String command;
-			command = input.nextLine().trim();
-			String[] line = command.split("\\s+");
-			if (line[0].equalsIgnoreCase("man") || 
-					(line[0].equalsIgnoreCase("help") && line.length==1))
-				printFull();
-			else if (line[0].equalsIgnoreCase("help"))
-				if (line[1].equalsIgnoreCase("ls"))
-					printLS();
-				else if (line[1].equalsIgnoreCase("man"))
-					printMan();
-				else if (line[1].equalsIgnoreCase("q"))
-					printQ();
-				else if (line[1].equalsIgnoreCase("help"))
-					printHelp();
-				else if (line[1].equalsIgnoreCase("ld"))
-					printLD();
-				else if (line[1].equalsIgnoreCase("lf"))
-					printLF();
-				else
-					unrecognized(line[1]);
-			else if (line[0].equalsIgnoreCase("ls")) {
-		        // tell the workers to send their files to you
-		        writeAllWorkers(Utils.M2W_REQ_LIST);
-				synchronized (queueLock) {
-					for (WorkerConnection wc : workerQueue) {
-						System.out.println(wc);
-						if (line.length > 1 && line[1].equals("-l"))
-							printFiles(wc.id);
-					}
-				}
-			}
-			else if (line[0].equalsIgnoreCase("q")) {
-				System.out.printf("Really quit? There %s %d job%s pending%n> ", 
-						(getJobs()==1?"is":"are"), getJobs(), (getJobs()==1?"":"s"));
-				command = input.nextLine().trim();
-				if (command.equalsIgnoreCase("y") || command.equalsIgnoreCase("yes")) 
-					stopServer();
-			}
-			else if (line[0].equalsIgnoreCase("ld")) {
-				if (line.length > 1) {
-					List<String> filesToUse = new LinkedList<>();
-					for(int i = 2; i < line.length; i++)
-						filesToUse.add(line[i]);
-					setMRJob(line[1], filesToUse, false);
-				}
-				else {
-					System.out.printf("Enter filename (operates on all worker files):%n> ");
-					command = input.nextLine().trim();
-					setMRJob(command, new LinkedList<String>(), false);
-				}
-			}
-			else if (line[0].equalsIgnoreCase("lf")) {
-				if (line.length >= 3) {
-					for( int i = 2; i < line.length; i++)
-						sendRegularFile(line[1], line[i]);
-				}
-				else {
-					System.out.printf("Enter filename:%n> ");
-					command = input.nextLine().trim();
-					System.out.printf("Enter worker IDs:%n> ");
-					String[] wkrs = input.nextLine().split("\\s+");
-					for( String wkr : wkrs)
-						sendRegularFile(command, wkr);
-				}
-			}
-			else 
-				unrecognized(line[0]);
-		} while (!isStopped());
-		input.close();
-	}
-	
-	protected void unrecognized(String cmd) {
-		if (cmd.length() > 0)
-			System.out.println(cmd + " is not recognized as a valid input command");
-	}
-	
-	protected void printFull() {
-		printMan();
-		printHelp();
-		printLS();
-		printLD();
-		printLF();
-		printQ();
-	}
-	
-	protected void printHelp() {
-		System.out.println("help <cmd>: get further information on <cmd>");
-	}
-	
-	protected void printQ() {
-		System.out.println("q: quit the system (y to confirm)");
-	}
-	
-	protected void printMan() {
-		System.out.println("man: display manual");
-	}
-	
-	protected void printLS() {
-		System.out.println("ls [-l]: list the workers currently in the cluster [with files]");
-	}
-	
-	protected void printLD() {
-		System.out.println("ld [filename]: load the map-reduce job");
-	}
-	
-	protected void printLF() {
-		System.out.println("lf [filename] <workerID1 [workerID2]...>: load the file to workerID");
-	}
+
 		
 	public static void main(String[] args) throws IOException {
 		Master m = new Master(args);
 		m.start();
-		m.commandLineInterface();  //run by main thread of execution
+		new CommandLine(m).start();  //run by main thread of execution
 	}
 }

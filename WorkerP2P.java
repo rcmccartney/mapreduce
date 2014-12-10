@@ -1,12 +1,10 @@
 package mapreduce;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.List;
 
 /**
@@ -18,13 +16,11 @@ public class WorkerP2P extends Thread {
  
 	protected ServerSocket workerServerSocket;
 	protected Worker worker;
-    protected int port; //This is the port used at src and dest. Since all W_P2P communications assume this port
     protected boolean stopRun;
     
     public WorkerP2P(int port, Worker worker) throws IOException {
     	this.stopRun = false;
-    	this.port = port;   
-    	this.workerServerSocket = new ServerSocket(this.port);
+    	this.workerServerSocket = new ServerSocket(port);
     	this.worker = worker;
     	this.setDaemon(true);
     	this.start();
@@ -39,13 +35,13 @@ public class WorkerP2P extends Thread {
 			while(!stopRun) {
 				Socket p2pSocket = workerServerSocket.accept();
 				System.out.println("Accepted socket: " + p2pSocket);
-				InputStream in = p2pSocket.getInputStream();
-				ObjectInputStream objInStream = new ObjectInputStream(in);
-				Object[] objArr = (Object[]) objInStream.readObject();
+				Object[] objArr = (Object[]) 
+						new ObjectInputStream(p2pSocket.getInputStream()).readObject();
 				worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
 			}
 		} catch (IOException | ClassNotFoundException e) {
-			if(stopRun) return; //cuz if we intended to stop the server
+			if (isStopped()) // we intended to stop the server
+				return;
 			System.out.println("IOException in WorkerP2P: " + e);
 		}
 	}
@@ -59,25 +55,25 @@ public class WorkerP2P extends Thread {
 	 * @param port
 	 */
 	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
-
 		try {
 			System.out.println("Sending " + key + ":" + values + " to " + peerAddress + ":" + port);
 			Socket socket = new Socket(peerAddress, port);
-			ObjectOutputStream objOutStream = new ObjectOutputStream(socket.getOutputStream());
-			objOutStream.writeObject(new Object[]{key, values});
-			objOutStream.close();
+			new ObjectOutputStream(socket.getOutputStream()).writeObject(new Object[]{key, values});
 			socket.close();
-		} catch (UnknownHostException e) {
-			e.printStackTrace();
 		} catch (IOException e) {
-			e.printStackTrace();
+			System.err.println("Error sending K,V pair between workers: " + e);
 		} 
+	}
+	
+	// access the boolean in a synchronized manner
+	protected synchronized boolean isStopped() {
+		return stopRun;
 	}
 	
 	/**
 	 * Close the Listener socket 
 	 */
-	public void closeConnection(){
+	public synchronized void closeConnection(){
 		stopRun = true;
 		try {
 			workerServerSocket.close();
