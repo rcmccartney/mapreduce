@@ -103,9 +103,9 @@ public class Job<K extends Serializable, V extends Serializable> {
 				K k = (K) o[0];
 				String peerAddress = (String) o[1]; 
 				Integer peerPort = (Integer) o[2]; 
+				//so that only keys assigned to this worker are left in mapOutput
 				if (!(worker.wP2P.equals(peerAddress, peerPort))) {
-					List<V> v = mapOutput.get(k);
-					mapOutput.remove(k); //so that only keys assigned to this worker are left in mapOutput
+					List<V> v = mapOutput.remove(k); 
 					worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
 				}
 			}
