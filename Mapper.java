@@ -5,25 +5,22 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 
-public abstract class Mapper<K extends Serializable, V extends Serializable> {
+public abstract class Mapper<IK extends Serializable, 
+							 IV extends Serializable,
+							 OV extends Serializable> {
 	
-	private Job<K, V> job;
+	private Job<IK, IV, OV> job;
 	
-	public void preProcess() {}
+	public abstract HashMap<IK, IV> map(File resource);
 	
-	public void postProcess() {}
-	
-	// TODO possibly use 2 sets of key, values
-	public abstract HashMap<K, V> map(File resource);
-	
-	public abstract V reduce(K key, List<V> listOfValues);
+	public abstract OV reduce(IK key, List<IV> listOfValues);
 
-	public void emit(K key, V value) {
+	public void emit(IK key, IV value) {
 		job.emit(key, value);
 	}
 	
 	@SuppressWarnings("unchecked")
-	public void setJob(Job<?, ?> job) {
-		this.job = (Job<K, V>) job;
+	public void setJob(Job<?, ?, ?> job) {
+		this.job = (Job<IK, IV, OV>) job;
 	}
 }

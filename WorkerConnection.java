@@ -50,8 +50,9 @@ public class WorkerConnection extends Thread {
     }
     
 	public void sendFile(byte transferType, String name, byte[] bArr) {
-		//notify client of pending MR transmission and send data
-		Utils.write(out, transferType, name+'\n', bArr);  //newline critical
+		// notify worker of pending file transmission and send data
+		// two types are a regular file or a MR job 
+		Utils.writeFile(out, transferType, name, bArr); 
 	}
 
 	/**
@@ -59,7 +60,7 @@ public class WorkerConnection extends Thread {
      */
     public void run() {
         // tell the worker to send their files to you
-        Utils.write(out, Utils.M2W_REQ_LIST);
+        Utils.writeCommand(out, Utils.M2W_REQ_LIST);
     	int command;
     	while(!isStopped()) {
     		try {

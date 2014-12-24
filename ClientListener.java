@@ -18,8 +18,8 @@ public class ClientListener extends Thread {
 	protected String MRFileName;
 	protected boolean stopped;
 	
-	public ClientListener(Master m) throws IOException {
-		clientSocket = new ServerSocket(Utils.DEF_CLIENT_PORT);
+	public ClientListener(Master m, int port) throws IOException {
+		clientSocket = new ServerSocket(port);
 		this.master = m;
 		this.stopped = false;
 	}
@@ -31,11 +31,6 @@ public class ClientListener extends Thread {
 	public synchronized void closeConnection() {
 		stopped = true;
     	try {
-    		if (!clientSocket.isClosed()) {
-    			// don't use writeWorker since that will call close recursively
-    			out.write(Utils.MR_QUIT); 
-    			out.flush();
-    		}
     		in.close();
     		out.close();
 			clientSocket.close();
@@ -50,34 +45,12 @@ public class ClientListener extends Thread {
 				in = client.getInputStream();
 				out = client.getOutputStream();
 				out.write(++connections);  //client waits for an ID
-				// boolean for this single client connection
-				boolean currConnection = true;
-				while (currConnection) {
-					int cmd;
-					if ((cmd = in.read()) != -1) { //commands are one byte
-						switch(cmd) {
-						case Utils.C2M_UPLOAD:	
-							// receive it in current directory
-							MRFileName = Utils.receiveFile(in, "");
-							out.write(Utils.AWK);
-							// don't quit current connection, Client can send more files
-							break;
-						case Utils.C2M_UPLOAD_FILES:
-							List<String> filesToUse = Utils.getFilesList(in);
-							// false bc it is an external connection
-							master.setMRJob(MRFileName, filesToUse, false);
-							currConnection = false;
-							break;
-						default:
-							System.err.println("Invalid command received at Client: " + cmd);
-							currConnection = false;
-							break;
-						}
-					}
-				} 
+				MRFileName = Utils.readFile(in, "");  // receive the MR java file
+				out.write(Utils.ACK);  // notify client you received it
+				List<String> filesToUse = Utils.readFilenames(in);  // receive files to operate on
+				master.setMRJob(MRFileName, filesToUse, false);
 			} catch (IOException e) {
 				System.err.println("Error while accepting client connections: " + e);
-				//this.closeConnection();
 			}
 		}
 	}

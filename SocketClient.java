@@ -10,7 +10,7 @@ public class SocketClient {
 
 	protected String hostName = ""; 
 	protected int id;
-	protected int port = Utils.DEF_MASTER_PORT;
+	protected int port = Utils.DEF_MASTER_PORT;  // default is a worker port
 	protected Socket socket;
 	protected OutputStream out;
 	protected InputStream in;
@@ -57,17 +57,23 @@ public class SocketClient {
 	private void parseArgs(String args[]) {
 		
 		for (int i = 0; i < args.length; i ++) {	
-			if (args[i].equals("-port")) 
+			if (args[i].equals("-p")) 
 				port = new Integer(args[++i]).intValue();
-			else if (args[i].equals("-host")) 
+			else if (args[i].equals("-h")) 
 				hostName = args[++i];
 			else {
-				System.out.println("Correct usage: java Worker [-host <hostName>] [-p <portnumber>] [");
-				System.out.println("\t-host: override localhost to set the host to <hostName>.");
-				System.out.println("\t-port: override default port 40001 to <port>.  "
-						+ "\n\t<host> and <port> must match the Master Server's.");
-				System.exit(1);
+				usageTemplate();
 			}
 		}	
+	}
+	
+	/**
+	 * This method is overwritten by subclasses to display correct usage 
+	 */
+	public void usageTemplate() {
+		System.out.println("Correct usage: java SocketClient [-h <hostName>] [-p <portnumber>] [");
+		System.out.println("\t-h: override localhost to set the host to <hostName>.");
+		System.out.println("\t-p: override default port to <port>.");
+		System.exit(1);
 	}
 }

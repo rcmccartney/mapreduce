@@ -10,10 +10,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -35,7 +35,8 @@ public class Master extends Thread {
 	private static int wkID = 0;
 	
 	protected int port = Utils.DEF_MASTER_PORT;
-	protected MasterJob<?, ?> mj;
+	protected int clientPort = Utils.DEF_CLIENT_PORT;
+	protected MasterJob<?, ?, ?> mj;
 	protected ExecutorService exec;
 	protected ClientListener clientConn;
 	protected ServerSocket serverSocket;
@@ -61,13 +62,13 @@ public class Master extends Thread {
 		stopped = false;
 		jobs = 0;
 		workerQueue = new ArrayList<>();
-		filesToID = new Hashtable<>();
-		IDtoFiles = new Hashtable<>();
-		workerIDToPort = new Hashtable<>();
+		filesToID = new ConcurrentHashMap<>();
+		IDtoFiles = new ConcurrentHashMap<>();
+		workerIDToPort = new ConcurrentHashMap<>();
 		serverSocket = new ServerSocket(port);
 		exec = Executors.newCachedThreadPool();
 		// listen for Client connection sending a file
-		clientConn = new ClientListener(this);
+		clientConn = new ClientListener(this, clientPort);
 		clientConn.setDaemon(true);
 		clientConn.start();
 	}
@@ -91,7 +92,7 @@ public class Master extends Thread {
 	    	for (final WorkerConnection wc : workerQueue) {
 	    		exec.execute(new Runnable() {
 	    			public void run() {
-	    				Utils.write(wc.out, message);				
+	    				Utils.writeCommand(wc.out, message);				
 	    			}
 	    		});
 	    	}
@@ -124,6 +125,18 @@ public class Master extends Thread {
 		}
     }
     
+    
+    protected void receiveWorkerPort(InputStream in) {
+		workerIDToPort.put(wkID, Utils.readInt(in));
+    }
+    
+    protected void receiveWorkerFiles(InputStream in) {
+		List<String> wFiles = Utils.readFilenames(in);
+		if (wFiles != null && wFiles.size() > 0)
+			this.addFiles(wkID, wFiles);
+	}
+    
+    
     protected void receive(InputStream in, OutputStream out, int wkID, int command) {
 		
 		switch(command) {
@@ -131,13 +144,13 @@ public class Master extends Thread {
 			workerIDToPort.put(wkID, Utils.readInt(in));
 			break;
 		case Utils.M2W_REQ_LIST_OKAY:
-			List<String> wFiles = Utils.getFilesList(in);
+			List<String> wFiles = Utils.readFilenames(in);
 			if (wFiles != null && wFiles.size() > 0)
 				this.addFiles(wkID, wFiles);
 			break;
 		case Utils.W2M_KEY:
 			mj.receiveWorkerKey(in, wkID);
-			Utils.write(out, Utils.AWK);  // worker waits for Awk before sending again
+			Utils.writeCommand(out, Utils.ACK);  // worker waits for Ack before sending another
 			break;
 		case Utils.W2M_KEY_COMPLETE:
 			//TODO: change wCount to compare with current actual # of workers on this job 
@@ -155,21 +168,21 @@ public class Master extends Thread {
 			break;
 		case Utils.W2M_RESULTS:
 			mj.receiveWorkerResults(in);
-			Utils.write(out, Utils.AWK);
+			Utils.writeCommand(out, Utils.ACK);
 			break;
 		case Utils.W2M_JOBDONE:
 			mj.wDones++;
 			if (mj.wDones == workerQueue.size())
 				mj.printResults();
 			break;
-		case Utils.AWK_MR:  //worker has awknowledged receiving MR job, need to send his files
+		case Utils.ACK:  //worker has awknowledged receiving MR job, need to send his files
 			ArrayList<String> contains = new ArrayList<>();
 			for(String file: mj.files) 
 				if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
 					contains.add(file);
 			String[] files = new String[contains.size()];
 			files = contains.toArray(files);
-			Utils.write(out, files);
+			Utils.writeFilenames(out, Utils.NONE, files);
 			break;
 		default:
 			System.err.println("Invalid command received on WorkerConnection " + wkID + ": " + command);
@@ -209,7 +222,7 @@ public class Master extends Thread {
 				// compile the file and load it into a mapper class
 				String className = compile(f2.getName());
 				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
-				Mapper<?, ?> mr = (Mapper<?, ?>) myClass.newInstance();
+				Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
 				// mj gets the class information generically from Mapper
 				mj = new MasterJob<>(mr, this, filesToUse);
 				// load the bytes of the compiled class and send it across the sockets to all workers
@@ -322,11 +335,14 @@ public class Master extends Thread {
 	protected void parseArgs(String args[]) {
 		
 		for (int i = 0; i < args.length; i ++) {	
-			if (args[i].equals("-port")) 
+			if (args[i].equals("-wp")) 
 				port = new Integer(args[++i]).intValue();
+			else if (args[i].equals("-cp")) 
+				clientPort = new Integer(args[++i]).intValue();
 			else {
-				System.out.println("Correct usage: java Master [-port <portnumber>]");
-				System.out.println("\t-port: override default port 40001 to <port>.");
+				System.out.println("Correct usage: java Master [-wp <port>] [-cp <port>]");
+				System.out.println("\t-wp: override default worker port 40001 to <port>.");
+				System.out.println("\t-cp: override default client port 40000 to <port>.");
 				System.exit(1);
 			}
 		}

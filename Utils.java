@@ -20,14 +20,14 @@ public class Utils {
 	// Flag to turn on/off debug messages (mostly logs) on the server
 	public static final boolean DEBUG = true;
 	
+	// The port numbers used for message passing
 	public static final int BASE_WP2P_PORT = 40016,
 							DEF_MASTER_PORT = 40001,
 							DEF_CLIENT_PORT = 40000;
 	
 	//Command constants used in network communication
 	public static final byte 
-			C2M_UPLOAD = 1, 
-			C2M_UPLOAD_FILES = 2,
+			NONE = 0,
 			M2W_MR_UPLOAD = 3,
 			MR_QUIT = 4,
 			W2M_KEY = 5, 
@@ -45,29 +45,40 @@ public class Utils {
 			W2M_REDUCEDKV = 17,
 			W2M_JOBDONE = 18,
 			M2W_DATA_USAGE = 19,
-			AWK = 20,
-			AWK_MR = 21;
+			ACK = 20;
 	
 	//Path for flat directory, where each worker stores files
 	public static final String basePath = "temp/";
 	
-	/*
+	/**
 	 * This method prints messages on to the console if DEBUG flag is on.
+	 * @param  str String to print to standard error
 	 */
 	public static void debug(String str){
-		if(DEBUG)
-			System.out.println(str);
+		if (DEBUG)
+			System.err.println(str);
 	}
 	
+	/**
+	 * Turn two separate byte arrays into a single array 
+	 * @param a the first byte array, will take the lower indexed position of the output array
+	 * @param b the second byte array that takes the higher indexed positions
+	 * @return byte[] c that is a combination of the two input arrays
+	 */
 	public static byte[] concat(byte[] a, byte[] b) {
 		int aLen = a.length;
 		int bLen = b.length;
-		byte[] c= new byte[aLen+bLen];
+		byte[] c = new byte[aLen+bLen];
 		System.arraycopy(a, 0, c, 0, aLen);
 		System.arraycopy(b, 0, c, aLen, bLen);
 		return c;
 	}
 	
+	/**
+	 * Convert an integer into a 4-dimensional byte array
+	 * @param value int to convert
+	 * @return len 4 byte array  
+	 */
 	public static final byte[] intToByteArray(int value) { 
 		return new byte[] { 
 				(byte)(value >>> 24), 
@@ -76,7 +87,15 @@ public class Utils {
 				(byte) value}; 
 	}
 	
-	public static int byteArrayToInt(byte [] b) { 
+	/**
+	 * Convert a byte array into an integer.  Assumes the array is of size 4
+	 * @param b 4-byte array to be converted to an integer
+	 * @return int value
+	 */
+	public static int byteArrayToInt(byte[] b) { 
+		// here the and operator promotes the byte and the hex to int
+		// and converts to the proper 8 bit value within the int without
+		// basically overriding Java's signed byte value
 		return  (b[0] << 24) + 
 				((b[1] & 0xFF) << 16) + 
 				((b[2] & 0xFF) << 8) + 
@@ -85,37 +104,43 @@ public class Utils {
 	
     /**
      * Function to get list of files over a socket
- 	 * 
      * @param in the socket InputStream that will receive the filenames
-     * @return list of file names received
+     * @return list of filenames received.  empty list is returned if no filenames are sent
      */
- 	public static List<String> getFilesList(InputStream in) {
- 		try {
- 			// length is the number of files being read
- 			int length = in.read();  // TODO won't work for more than 1 byte of files
- 			List<String> list = new LinkedList<>();
- 			for(int i=0; i < length; i++) 
- 				list.add(readString(in));
- 			return list;
- 		} catch (IOException e) {
- 			System.err.println("Exception while receiving file listing from Client: " + e);
- 			return null;
- 		}
+ 	public static List<String> readFilenames(InputStream in) {
+		// length is the number of files being read
+		int length = Utils.readInt(in);  
+		List<String> list = new LinkedList<>();
+		for(int i=0; i < length; i++) 
+			list.add(readString(in));
+		return list;
  	}
  	
- 	public static String readString(InputStream in) throws IOException {
+ 	/**
+ 	 * Helper function to read a String over a socket.  The String must be newline delimited
+ 	 * @param in stream to read from 
+ 	 * @return String read from the stream
+ 	 */
+ 	public static String readString(InputStream in)  {
  		try {
  			int f;
  			String name = "";
- 			while( (f = in.read()) != '\n') 
+ 			while((f = in.read()) != -1 && f != '\n') 
  				name += (char) f;
  			return name;
  		} catch (IOException e) {
-			System.err.println("Error reading String: " + e);
+			debug("Exception reading String from " + in.toString() + ": " + e);
 			return "";
 		}
  	}
  	
+ 	/**
+ 	 * Reads an integer from an input stream, where the int is transported as 
+ 	 * a 4-byte array 
+ 	 * 
+ 	 * @param in input stream to read from
+ 	 * @return int signed value, or -1 for failure
+ 	 */
 	public static int readInt(InputStream in) {
 		try {
 			byte[] mybytearray = new byte[4];
@@ -123,16 +148,23 @@ public class Utils {
 				mybytearray[i] = (byte) in.read();
 			return Utils.byteArrayToInt(mybytearray);
 		} catch (IOException e) {
-			System.err.println("Error reading int: " + e);
+			debug("Exception reading int from " + in.toString() + ": " + e);
 			return -1;
 		}
 	}
 	
+	/**
+	 * Reads from an input stream and writes to an output stream simultaneously, using a 
+	 * buffer of size 1024.
+	 * 
+	 * @param in Stream to read from
+	 * @param out Stream to write to (usually to a File)
+	 * @return int bytes read and written, or -1 for failure
+	 */
 	public static int readWriteBytes(InputStream in, OutputStream out) {
 		try{		
 			int totalBytes = 0;
 			byte[] mybytearray = new byte[1024];
-			//ByteArrayOutputStream bos = new ByteArrayOutputStream();
 			while (true) {
 				int bytesRead = in.read(mybytearray, 0, mybytearray.length);
 				totalBytes += bytesRead;
@@ -141,29 +173,35 @@ public class Utils {
 				if (bytesRead < 1024) break; //assumes a single message is passed
 			}
 			out.flush();
-			//return bos.toByteArray();
 			return totalBytes;
 		} catch (IOException e) {
-			System.err.println("Exception while receiving file from Client: " + e);
+			debug("Exception in read/write from " + in.toString() + " to " + out.toString() + ": " + e);
 			return -1;
 		}
 	}
 	
-	public static String receiveFile(InputStream in, String writeDir){
+	/**
+	 * Receives a file over a Stream as a byte sequence, and writes it to the location 
+	 * given as a parameter to the function
+	 * 
+	 * @param in stream to read from
+	 * @param writeDir directory to write the file to
+	 * @return String filename, or empty String for failure
+	 */
+	public static String readFile(InputStream in, String writeDir){
 		try {
 			// the first thing sent will be the filename
-			System.err.print("...Receiving file: ");
 			String name = Utils.readString(in);
 			BufferedOutputStream bos = new BufferedOutputStream(
 					new FileOutputStream(writeDir + name));
 			// this will write the bytes received to disk
 			int totalCount = Utils.readWriteBytes(in, bos);
 			bos.close();
-			System.err.printf("%s %d bytes downloaded%n", name, totalCount);
+			System.err.printf("%s: %d bytes downloaded%n", name, totalCount);
 			return name;
 		} catch (IOException e) {
-    		System.err.println("Error receiving file from Master: closing connection.");
-    		return null;
+			debug("Exception in receiving from " + in.toString() + ": " + e);
+    		return "";
 		}
 	}
  	
@@ -175,7 +213,7 @@ public class Utils {
  	 * @throws IOException 
  	 */
 	public static void copyFile(File sourceFile, File destFile) throws IOException {
-	    if(!destFile.exists()) {
+	    if (!destFile.exists()) {
 	        destFile.createNewFile();
 	    }
 	    FileChannel source = null;
@@ -195,93 +233,80 @@ public class Utils {
 	    }
 	}
 	
-	public static void write(OutputStream out, byte command, String arg, byte... barg) {
+	/**
+	 * Write the bytes of a file along with its filename to an output stream
+	 * 
+	 * @param out output stream to write the bytes of the file to
+	 * @param command the type of file this is, a MR file or a regular file upload    
+	 * @param filename name of file to store the bytes into
+	 * @param barg the bytes of the file transferred over the stream
+	 */
+	public static void writeFile(OutputStream out, byte command, String filename, byte... barg) {
 		try {
-			byte[] barr = Utils.concat(arg.getBytes(), barg);
-			out.write(command);
+			//filename must be newline delimited from the bytes of data
+			byte[] barr = Utils.concat((filename+'\n').getBytes(), barg);
+			if (command != NONE)
+				out.write(command);
 			out.write(barr);
 			out.flush();
 		} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
+			debug("Exception in writing file to " + out.toString() + ": " + e);
 		}
 	}
 	
-	public static void write(OutputStream out, byte command, String[] args) {
+	/**
+	 * Writes a list of filenames to an output stream, to be read by readFilenames
+	 * @param out stream to write to 
+	 * @param args String[] of filenames
+	 */
+	public static void writeFilenames(OutputStream out, byte command, String[] args) {
 		try {
-			out.write(command);
-			out.write(args.length);  //won't work for > 1 byte of Strings
+			// first write the number of filenames that will be sent
+			if (command != NONE)
+				out.write(command);
+			out.write(Utils.intToByteArray(args.length));
 			for (String s : args)
 				out.write((s + "\n").getBytes());
 			out.flush();
 		} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
-		}
-	}
-	
-	public static void write(OutputStream out, String[] args) {
-		try {
-			out.write(args.length);  //won't work for > 1 byte of Strings
-			for (String s : args)
-				out.write((s + "\n").getBytes());
-			out.flush();
-		} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
+			debug("Exception in writing filenames to " + out.toString() + ": " + e);
 		}
 	}
 
-    public static void write(OutputStream out, byte command, Object obj) {
+    public static void writeObject(OutputStream out, byte command, Object obj) {
     	try {
-			out.write(command);
+			if (command != NONE)
+				out.write(command);
     		ObjectOutputStream objStream = new ObjectOutputStream(out);
     		objStream.writeObject(obj);
     		objStream.flush();
     	} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
+			debug("Exception in writing object to " + out.toString() + ": " + e);
     	}				
     }
 
-    public static void write(OutputStream out, byte command, String arg) {
+    public static void writeByteArray(OutputStream out, byte command, byte... barg) {
     	try {
-			out.write(command);
-			out.write((arg + "\n").getBytes());
+    		if (command != NONE)
+    			out.write(command);
+			out.write(barg);
     		out.flush();
     	} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
-    	}				
-    }
-
-    public static void write(OutputStream out, byte command, byte... arg) {
-    	try {
-			out.write(command);
-			out.write(arg);
-    		out.flush();
-    	} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
+			debug("Exception in writing byte array to " + out.toString() + ": " + e);
     	}				
     }
     
-    public static void write(OutputStream out, byte command) {
+    
+    public static void writeCommand(OutputStream out, byte command) {
     	try {
 			out.write(command);
     		out.flush();
     	} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
+			debug("Exception in writing command to " + out.toString() + ": " + e);
     	}				
     }
     
-    // this writes only a single byte of the int
-    public static void write(OutputStream out, byte command, int arg) {
-    	try {
-			out.write(command);
-			out.write(arg);
-    		out.flush();
-    	} catch (IOException e) {
-			System.err.printf("Error writing to OutputStream: " + e);
-    	}
-    }
-    
-    //this writes all four bytes of the int
     public static void writeInt(OutputStream out, byte command, int arg) {
-    	Utils.write(out, command, intToByteArray(arg));
+    	writeByteArray(out, command, Utils.intToByteArray(arg));
     }
 }

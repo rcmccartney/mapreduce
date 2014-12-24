@@ -34,10 +34,10 @@ public class WorkerP2P extends Thread {
 		try {
 			while(!stopRun) {
 				Socket p2pSocket = workerServerSocket.accept();
-				System.out.println("Accepted socket: " + p2pSocket);
 				Object[] objArr = (Object[]) 
 						new ObjectInputStream(p2pSocket.getInputStream()).readObject();
-				worker.currentJob.receiveKVAndAggregate(objArr[0], objArr[1]);
+				worker.currentJob.receiveKV(objArr[0], objArr[1]);
+				System.out.println("Received <key,List<V>> from " + p2pSocket);
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if (isStopped()) // we intended to stop the server
@@ -56,10 +56,10 @@ public class WorkerP2P extends Thread {
 	 */
 	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
 		try {
-			System.out.println("Sending " + key + ":" + values + " to " + peerAddress + ":" + port);
 			Socket socket = new Socket(peerAddress, port);
 			new ObjectOutputStream(socket.getOutputStream()).writeObject(new Object[]{key, values});
 			socket.close();
+			System.out.println("Sent <" + key + ",List<V>> to " + peerAddress + ":" + port);
 		} catch (IOException e) {
 			System.err.println("Error sending K,V pair between workers: " + e);
 		} 
@@ -83,6 +83,7 @@ public class WorkerP2P extends Thread {
 	}
 	
 	// each worker is on a unique port, can use this for equality testing
+	// but should change this to be more scalable
 	public boolean equals(String peerAddress, Integer peerPort) {
 		return workerServerSocket.getLocalPort() == peerPort;
 	}

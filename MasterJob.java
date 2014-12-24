@@ -9,10 +9,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class MasterJob<K extends Serializable, V extends Serializable> {
+public class MasterJob<K extends Serializable, 
+					   IV extends Serializable,
+					   OV extends Serializable> {
 
-	protected Mapper<K, V> currentJob;
-	protected HashMap<K, V> results;
+	protected Mapper<K, IV, OV> currentJob;
+	protected HashMap<K, OV> results;
 	protected HashMap<K, Integer> keyCounts; 
 	protected Master master;
 	//Map b/w key and list of Worker Ids it came from
@@ -24,7 +26,7 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 	protected Map<Integer, List<Object[]>> worker_messages_map; 
 	protected List<String> files;
 	
-	public MasterJob(Mapper<K, V> mr, Master master, List<String> files) {
+	public MasterJob(Mapper<K, IV, OV> mr, Master master, List<String> files) {
 		this.master = master;
 		currentJob = mr;
 		keyCounts = new HashMap<>();
@@ -83,7 +85,7 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 			ObjectInputStream objInStream = new ObjectInputStream(in);
 			Object[] o = (Object[]) objInStream.readObject();		
 			K k = (K) o[0];
-			V v = (V) o[1];
+			OV v = (OV) o[1];
 			results.put(k, v);
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -130,7 +132,7 @@ public class MasterJob<K extends Serializable, V extends Serializable> {
 		 */
 		for (Map.Entry<Integer, List<Object[]>> entry : worker_messages_map.entrySet()) {
 			WorkerConnection wc = master.getWCwithId(entry.getKey());
-			Utils.write(wc.out, Utils.M2W_COORD_KEYS, entry.getValue());
+			Utils.writeObject(wc.out, Utils.M2W_COORD_KEYS, entry.getValue());
 		}
 	}
 
