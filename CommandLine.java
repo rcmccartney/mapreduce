@@ -80,12 +80,22 @@ public class CommandLine extends Thread {
 					List<String> filesToUse = new LinkedList<>();
 					for(int i = 2; i < line.length; i++)
 						filesToUse.add(line[i]);
-					m.receiveMRJob(line[1], filesToUse, false);
+					try {
+						m.receiveMRJob(line[1], filesToUse, false);
+					} catch (Exception e) {
+						input.close();
+						throw new RuntimeException(e);
+					}
 				}
 				else {
 					System.out.printf("Enter filename (operates on all worker files):%n> ");
 					command = input.nextLine().trim();
-					m.receiveMRJob(command, new LinkedList<String>(), false);
+					try {
+						m.receiveMRJob(command, new LinkedList<String>(), false);
+					} catch (Exception e) {
+						input.close();
+						throw new RuntimeException(e);
+					}
 				}
 			}
 			else if (line[0].equalsIgnoreCase("lf")) {

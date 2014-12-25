@@ -158,28 +158,23 @@ public class Master extends Thread {
     ///////////////////////////////////
 	
     protected void receiveWorkerKey(int wkID, InputStream in, OutputStream out, int jobID) throws IOException {
-		// Worker will send the JobID this refers to
     	jobs.get(jobID).receiveWorkerKey(in, wkID);
 		out.write(Utils.ACK);  // worker waits for Ack before sending another
     }
     
     protected void receiveKeyComplete(InputStream in, int jobID) {
-		// Worker will send the JobID this refers to
 		jobs.get(jobID).receiveKeyComplete();
     }
     
     protected void receiveKeyShuffle(InputStream in, int jobID) {
-    	// Worker will send the JobID this refers to
 		jobs.get(jobID).receiveKeyShuffle();
     }
     
     protected void receiveJobDone(InputStream in, int jobID) {
-    	// Worker will send the JobID this refers to
 		jobs.get(jobID).receiveJobDone();
     }
     
     protected void receiveResults(InputStream in, OutputStream out, int jobID) throws IOException {
-    	// Worker will send the JobID this refers to
     	jobs.get(jobID).receiveWorkerResults(in);
     	out.write(Utils.ACK);  // worker waits for Ack before sending another
     }
@@ -187,9 +182,13 @@ public class Master extends Thread {
     protected void receiveAck(int wkID, InputStream in, OutputStream out, int jobID) {
     	//worker has awknowledged receiving MR job, need to send his files
 		ArrayList<String> contains = new ArrayList<>();
-		for(String file: jobs.get(jobID).files)  //first thing sent is jobID 
-			if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
-				contains.add(file);
+		// if files is empty then use all local files
+		if (jobs.get(jobID).files.isEmpty())
+			contains.add(Utils.ALL);
+		else 
+			for(String file: jobs.get(jobID).files) 
+				if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
+					contains.add(file);
 		String[] files = new String[contains.size()];
 		files = contains.toArray(files);
 		Utils.writeFilenames(out, files);  // worker is waiting, no need to send jobID

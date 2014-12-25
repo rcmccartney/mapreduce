@@ -41,8 +41,8 @@ public class WorkerP2P extends Thread {
 				int jobID = Utils.readInt(p2pSocket.getInputStream());
 				Object[] objArr = (Object[]) 
 						new ObjectInputStream(p2pSocket.getInputStream()).readObject();
+				System.out.println("Job " + jobID + ": Received <" + objArr[0] + "> from " + p2pSocket);
 				worker.jobs.get(jobID).receiveKV(objArr[0], objArr[1]);
-				System.out.println("Received Job " + jobID + " <key,List<V>> from " + p2pSocket);
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if (isStopped()) // we intended to stop the server
@@ -65,7 +65,7 @@ public class WorkerP2P extends Thread {
 			Utils.writeInt(socket.getOutputStream(), jobID);
 			new ObjectOutputStream(socket.getOutputStream()).writeObject(new Object[]{key, values});
 			socket.close();
-			System.out.println("Job " + jobID + ": Sent <" + key + ",List<V>> to " + peerAddress + ":" + port);
+			System.out.println("Job " + jobID + ": Sent <" + key + "> to " + peerAddress + ":" + port);
 		} catch (IOException e) {
 			System.err.println("Error sending K,V pair between workers: " + e);
 		} 

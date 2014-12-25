@@ -62,7 +62,7 @@ public class MasterJob<K extends Serializable,
 	}
 	
 	protected synchronized void receiveKeyComplete() {
-		if (++keysSent == jobWorkers.size())
+		if (++keysSent == jobWorkers.size()) 
 			coordinateKeysOnWorkers();
 	}
 

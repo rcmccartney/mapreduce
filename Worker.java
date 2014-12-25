@@ -128,12 +128,20 @@ public class Worker extends SocketClient implements Runnable {
 		if (mr != null) {
 			Utils.writeCommand(out, Utils.ACK, jobID);  // notify master, next message received is the file listing
 			List<String> names = Utils.readFilenames(in);
-			if (names.size() == 0)  // Master sent nothing, use all local files
+			// Master can sent empty list is no local files are wanted
+			// filename of 'all' means to use all local files
+			if (!names.isEmpty() && names.get(0).equals(Utils.ALL))  
 				names = new ArrayList<String>(Arrays.asList(baseDir.list()));
 			Job<?,?,?> currentJob = new Job<>(jobID, this, mr, names);
 			jobs.put(jobID, currentJob);
 			currentJob.begin(basePath);
 		}
+    }
+    
+    public void jobComplete(int jobID) {
+    	// TODO bug that this happens before reduction if a cluster node is given no files to operate on
+    	// somehow there is a race condition in the control flow
+    	//jobs.remove(jobID);
     }
     
     public void run() {

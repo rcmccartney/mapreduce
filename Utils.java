@@ -24,6 +24,8 @@ public class Utils {
 	// Flag to turn on/off debug messages (mostly logs) on the server
 	public static final boolean DEBUG = true;
 	
+	public static final String ALL = "all";
+	
 	// The port numbers used for message passing
 	public static final int BASE_WP2P_PORT = 40016,
 							DEF_MASTER_PORT = 40001,

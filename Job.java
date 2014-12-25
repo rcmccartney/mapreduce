@@ -104,7 +104,7 @@ public class Job<K extends Serializable,
 	}
 	
 	@SuppressWarnings("unchecked")
-	public void receiveKV(Object k, Object v){
+	public void receiveKV(Object k, Object v) {
 		K key = (K) k; 
 		List<IV> valList = (List<IV>) v;
 		if (mapOutput.containsKey(key))
@@ -148,6 +148,8 @@ public class Job<K extends Serializable,
 			worker.in.read();  // wait for ACK
 		}
 		Utils.writeCommand(worker.out, Utils.W2M_JOBDONE, jobID);
+		// let worker know this job is completed
+		worker.jobComplete(this.jobID);
 	}
 	
 	public void stopExecution() {
