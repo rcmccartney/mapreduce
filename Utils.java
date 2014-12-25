@@ -8,6 +8,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.channels.FileChannel;
 import java.util.LinkedList;
 import java.util.List;
@@ -59,12 +63,30 @@ public class Utils {
 			System.err.println(str);
 	}
 	
+    // need to do add path to Classpath with reflection since the URLClassLoader.addURL(URL url) method is protected
+    // this allows each worker to have their own private folder if run on the same machine
+    public static URLClassLoader addPath(String s) {
+        try {
+        	File f = new File(s);
+	        URI u = f.toURI();
+	        URLClassLoader urlClassLoader = (URLClassLoader) ClassLoader.getSystemClassLoader();
+	        Class<URLClassLoader> urlClass = URLClassLoader.class;
+	        Method method = urlClass.getDeclaredMethod("addURL", new Class[]{URL.class});
+	        method.setAccessible(true);
+	        method.invoke(urlClassLoader, new Object[]{u.toURL()});
+	        return urlClassLoader;
+        } catch (Exception e) {
+        	System.err.println("Exception in adding Worker classpath: " + e);
+        	return null;
+        }
+    }
+	
 	/**
 	 * Turn two separate byte arrays into a single array 
 	 * @param a the first byte array, will take the lower indexed position of the output array
 	 * @param b the second byte array that takes the higher indexed positions
 	 * @return byte[] c that is a combination of the two input arrays
-	 */
+	 *
 	public static byte[] concat(byte[] a, byte[] b) {
 		int aLen = a.length;
 		int bLen = b.length;
@@ -72,7 +94,7 @@ public class Utils {
 		System.arraycopy(a, 0, c, 0, aLen);
 		System.arraycopy(b, 0, c, aLen, bLen);
 		return c;
-	}
+	}*/
 	
 	/**
 	 * Convert an integer into a 4-dimensional byte array
@@ -244,8 +266,8 @@ public class Utils {
 	public static void writeFile(OutputStream out, String filename, byte... barg) {
 		try {
 			//filename must be newline delimited from the bytes of data
-			byte[] barr = Utils.concat((filename+'\n').getBytes(), barg);
-			out.write(barr);
+			out.write((filename+'\n').getBytes());
+			out.write(barg);
 			out.flush();
 		} catch (IOException e) {
 			debug("Exception in writing file to " + out.toString() + ": " + e);

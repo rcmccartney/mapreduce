@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -37,6 +38,9 @@ public class Master extends Thread {
 	
 	protected int port = Utils.DEF_MASTER_PORT;
 	protected int clientPort = Utils.DEF_CLIENT_PORT;
+	protected String basePath;
+	protected File baseDir;
+	protected URLClassLoader myClassPathLoader;
 	protected ExecutorService exec;
 	protected ClientListener clientConn;
 	protected ServerSocket serverSocket;
@@ -58,6 +62,12 @@ public class Master extends Thread {
 		if (args.length > 0)
 			parseArgs(args);
 		stopped = false;
+		// set up a classpath area for work to be done
+		basePath = Utils.basePath + File.separator + "master";
+    	baseDir = new File(basePath);
+    	if (!baseDir.isDirectory())
+    		baseDir.mkdirs();
+    	myClassPathLoader = Utils.addPath(basePath);
 		workerQueue = new ArrayList<>();
 		filesToID = new ConcurrentHashMap<>();
 		IDtoFiles = new ConcurrentHashMap<>();
@@ -182,7 +192,7 @@ public class Master extends Thread {
 				contains.add(file);
 		String[] files = new String[contains.size()];
 		files = contains.toArray(files);
-		Utils.writeFilenames(out, files);  //worker is waiting, no need to send jobID
+		Utils.writeFilenames(out, files);  // worker is waiting, no need to send jobID
     }
      
     /**
@@ -202,28 +212,27 @@ public class Master extends Thread {
 		//if filesToUSe is empty then use all files there
 		try {
 			File f1 = null, f2 = null;
-			// if deleteAfter is false then this file is local, need to copy it
-			// to our working directory
-			if (local){
+			// if this file is local need to copy it to our working directory
+			if (local) {
 				f1 = new File(filename);
-				f2 = new File(f1.getName());
+				f2 = new File(basePath + File.separator + filename);
 				Utils.copyFile(f1, f2);
 			}
 			else //this file came from an external client 
-				f2 = new File(filename);
+				f2 = new File(basePath + File.separator + filename);
 			// compile the file and load it into a mapper class
-			String className = compile(f2.getName());
-			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
+			String className = compile(filename);
+			Class<?> myClass = myClassPathLoader.loadClass(className); 
 			Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
 			// mj gets the class information generically from Mapper
 			final int currJob = ++jobCounter;
 			jobs.put(currJob, new MasterJob<>(currJob, mr, this, filesToUse, workerQueue));
 			// load the bytes of the compiled class and send it across the sockets to all workers
-			final Path myFile = Paths.get(className + ".class");
+			final Path myFile = Paths.get(basePath + File.separator + className + ".class");
 			final byte[] byteArrOfFile = Files.readAllBytes(myFile);
-			// TODO change master classpath so client can run locally w/o deleting files
-			//Files.delete(Paths.get(className + ".class"));
-			//Files.delete(Paths.get(f2.getName()));
+			// clean up the area 
+			Files.delete(myFile);
+			Files.delete(Paths.get(basePath + File.separator + f2.getName()));
 			synchronized (queueLock) {
 				for (final WorkerConnection wc : workerQueue) {
 					exec.execute(new Runnable() {
@@ -261,7 +270,7 @@ public class Master extends Thread {
 			JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();  
 			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
 				throw new RuntimeException("Error: no compiler set for MR file");
-			int compilationResult = compiler.run(null, null, null, filename);  
+			int compilationResult = compiler.run(null, null, null, basePath + File.separator + filename);  
 			System.out.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
 			return filename.split("\\.")[0];  // class name is before ".java"
 		} catch (Exception e) {

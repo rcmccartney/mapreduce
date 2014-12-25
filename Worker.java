@@ -7,9 +7,6 @@ package mapreduce;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Method;
-import java.net.URI;
-import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -59,7 +56,7 @@ public class Worker extends SocketClient implements Runnable {
     	baseDir = new File(basePath);
     	if (!baseDir.isDirectory())
     		baseDir.mkdirs();
-    	myClasspathLoader = addPath(basePath);
+    	myClasspathLoader = Utils.addPath(basePath);
     	jobs = new ConcurrentHashMap<>();
     	new Thread(this).start();  //start a thread to read from the Master
     }
@@ -90,24 +87,6 @@ public class Worker extends SocketClient implements Runnable {
         	Files.deleteIfExists(Paths.get(basePath));
     		wP2P.closeConnection();
     	} catch (IOException e) {} //ignore exceptions since you are quitting
-    }
-    
-    // need to do add path to Classpath with reflection since the URLClassLoader.addURL(URL url) method is protected
-    // this allows each worker to have their own private folder if run on the same machine
-    public static URLClassLoader addPath(String s) {
-        try {
-        	File f = new File(s);
-	        URI u = f.toURI();
-	        URLClassLoader urlClassLoader = (URLClassLoader) ClassLoader.getSystemClassLoader();
-	        Class<URLClassLoader> urlClass = URLClassLoader.class;
-	        Method method = urlClass.getDeclaredMethod("addURL", new Class[]{URL.class});
-	        method.setAccessible(true);
-	        method.invoke(urlClassLoader, new Object[]{u.toURL()});
-	        return urlClassLoader;
-        } catch (Exception e) {
-        	System.err.println("Exception in adding Worker classpath: " + e);
-        	return null;
-        }
     }
     
     private Mapper<?, ?, ?> loadMRFile(String classfile) {		

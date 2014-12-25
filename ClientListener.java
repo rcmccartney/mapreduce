@@ -1,5 +1,6 @@
 package mapreduce;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -45,7 +46,7 @@ public class ClientListener extends Thread {
 				in = client.getInputStream();
 				out = client.getOutputStream();
 				out.write(++connections);  //client waits for an ID
-				MRFileName = Utils.receiveFile(in, "");  // receive the MR java file
+				MRFileName = Utils.receiveFile(in, master.basePath + File.separator);  // receive the MR java file
 				out.write(Utils.ACK);  // notify client you received it
 				List<String> filesToUse = Utils.readFilenames(in);  // receive files to operate on
 				master.receiveMRJob(MRFileName, filesToUse, false);
