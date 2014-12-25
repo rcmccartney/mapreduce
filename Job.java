@@ -6,9 +6,9 @@ import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.ArrayList;
-import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Job<K extends Serializable, 
 				 IV extends Serializable,
@@ -19,15 +19,23 @@ public class Job<K extends Serializable,
 	protected Map<K, List<IV>> mapOutput;
 	protected Map<K, OV> finalOut;
 	protected List<String> files;
+	protected int jobID;
 	
-	public Job(Worker worker, Mapper<K, IV, OV> mr, List<String> data) {
+	public Job(int jobID, Worker worker, Mapper<K, IV, OV> mr, List<String> data) {
+		this.jobID = jobID;
 		this.worker = worker;
 		this.mr = mr;
 		this.mr.setJob(this);  // allows user to call emit
-		files = data;
-		mapOutput = new Hashtable<>();
-		finalOut = new Hashtable<>();
+		this.files = data;
+		mapOutput = new ConcurrentHashMap<>();
+		finalOut = new ConcurrentHashMap<>();
 	}
+	
+	////////////////////////////////////////////////
+	//
+	// Map phase of map-reduce on this worker node
+	//
+	///////////////////////////////////////////////
 	
 	public void begin(String basePath) throws IOException {
 		
@@ -59,6 +67,42 @@ public class Job<K extends Serializable,
 			emit(key, tmp.get(key));
 	}
 	
+	public void sendKeysToMaster() throws IOException {
+		for (K key: mapOutput.keySet()) {
+			Utils.writeCommand(worker.out, Utils.W2M_KEY, jobID);
+			Utils.writeObject(worker.out, new Object[]{key, mapOutput.get(key).size()});
+			worker.in.read();  // wait for ACK
+		}
+		Utils.writeCommand(worker.out, Utils.W2M_KEY_COMPLETE, jobID);
+	}
+	
+	////////////////////////////////////////////////
+	//
+	// Shuffle and sort phase of map-reduce on this worker node
+	//
+	///////////////////////////////////////////////
+
+	@SuppressWarnings("unchecked")
+	public void receiveKeyAssignments() {
+
+		try {
+			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
+			List<Object[]> keyTransferMsg = (List<Object[]>) objInStream.readObject();
+			for (Object[] o : keyTransferMsg) {  // each object is { K, ipaddr, port} for where to send K
+				K k = (K) o[0];
+				String peerAddress = (String) o[1]; 
+				Integer peerPort = (Integer) o[2]; 
+				//so that only keys assigned to this worker are left in mapOutput
+				List<IV> v = mapOutput.remove(k); 
+				worker.wP2P.send(k, v, jobID, peerAddress, peerPort); //sends key and its value list as object[]
+			}
+			//A worker sends this message, so that master can keep track of workers who are ready for reduce
+			Utils.writeCommand(worker.out, Utils.W2M_KEYSHUFFLED, jobID);   
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	@SuppressWarnings("unchecked")
 	public void receiveKV(Object k, Object v){
 		K key = (K) k; 
@@ -69,38 +113,12 @@ public class Job<K extends Serializable,
 			mapOutput.put(key, valList);
 	}
 	
-	@SuppressWarnings("unchecked")
-	public void receiveKeyAssignments() {
-		// TODO bug that the socket hangs if it is given zero files to read
-		// since the worker is not assigned any Keys by the master
-		try {
-			ObjectInputStream objInStream = new ObjectInputStream(worker.in);
-			List<Object[]> keyTransferMsgs = (List<Object[]>) objInStream.readObject();
-			for (Object[] o : keyTransferMsgs) {
-				K k = (K) o[0];
-				String peerAddress = (String) o[1]; 
-				Integer peerPort = (Integer) o[2]; 
-				//so that only keys assigned to this worker are left in mapOutput
-				if (!(worker.wP2P.equals(peerAddress, peerPort))) {
-					List<IV> v = mapOutput.remove(k); 
-					worker.wP2P.send(k, v, peerAddress, peerPort); //sends key and its value list as object[]
-				}
-			}
-			//A worker sends this message, so that master can keep track of workers who are ready for reduce
-			Utils.writeCommand(worker.out, Utils.W2M_KEYSHUFFLED);   
-		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
-		}
-	}
-	
-	public void sendKeysToMaster() throws IOException {
-		for (K key: mapOutput.keySet()) {
-			Utils.writeObject(worker.out, Utils.W2M_KEY, new Object[]{key, mapOutput.get(key).size()});
-			worker.in.read();  // wait for ACK
-		}
-		Utils.writeCommand(worker.out, Utils.W2M_KEY_COMPLETE);
-	}
-	
+	////////////////////////////////////////////////
+	//
+	// Reduce phase of map-reduce on this worker node
+	//
+	///////////////////////////////////////////////
+
 	public void reduce() throws IOException {
 		List<Thread> thrs = new ArrayList<>();
 		for(final K key: mapOutput.keySet()) {
@@ -125,10 +143,11 @@ public class Job<K extends Serializable,
 	
 	public void sendResults() throws IOException {
 		for (Map.Entry<K, OV> e : finalOut.entrySet()) {
-			Utils.writeObject(worker.out, Utils.W2M_RESULTS, new Object[]{e.getKey(), e.getValue()});
+			Utils.writeCommand(worker.out, Utils.W2M_RESULTS, jobID);
+			Utils.writeObject(worker.out, new Object[]{e.getKey(), e.getValue()});
 			worker.in.read();  // wait for ACK
 		}
-		Utils.writeCommand(worker.out, Utils.W2M_JOBDONE);
+		Utils.writeCommand(worker.out, Utils.W2M_JOBDONE, jobID);
 	}
 	
 	public void stopExecution() {

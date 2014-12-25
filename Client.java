@@ -27,9 +27,9 @@ public class Client extends SocketClient {
 		try {
 			Path file = Paths.get(jobFile);
 			byte[] filedata = Files.readAllBytes(file);
-			Utils.writeFile(out, Utils.NONE, file.getFileName().toString(), filedata);
+			Utils.writeFile(out, file.getFileName().toString(), filedata);
 			in.read();  // wait for reply from master before sending next message
-			Utils.writeFilenames(out, Utils.NONE, filePaths);
+			Utils.writeFilenames(out, filePaths);
 			System.out.printf("%s uploaded to Master server from Client %d%n", jobFile, id);
 			closeConnection();
 		} catch (IOException e) {

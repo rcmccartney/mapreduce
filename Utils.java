@@ -188,7 +188,7 @@ public class Utils {
 	 * @param writeDir directory to write the file to
 	 * @return String filename, or empty String for failure
 	 */
-	public static String readFile(InputStream in, String writeDir){
+	public static String receiveFile(InputStream in, String writeDir){
 		try {
 			// the first thing sent will be the filename
 			String name = Utils.readString(in);
@@ -241,12 +241,10 @@ public class Utils {
 	 * @param filename name of file to store the bytes into
 	 * @param barg the bytes of the file transferred over the stream
 	 */
-	public static void writeFile(OutputStream out, byte command, String filename, byte... barg) {
+	public static void writeFile(OutputStream out, String filename, byte... barg) {
 		try {
 			//filename must be newline delimited from the bytes of data
 			byte[] barr = Utils.concat((filename+'\n').getBytes(), barg);
-			if (command != NONE)
-				out.write(command);
 			out.write(barr);
 			out.flush();
 		} catch (IOException e) {
@@ -259,11 +257,9 @@ public class Utils {
 	 * @param out stream to write to 
 	 * @param args String[] of filenames
 	 */
-	public static void writeFilenames(OutputStream out, byte command, String[] args) {
+	public static void writeFilenames(OutputStream out, String[] args) {
 		try {
 			// first write the number of filenames that will be sent
-			if (command != NONE)
-				out.write(command);
 			out.write(Utils.intToByteArray(args.length));
 			for (String s : args)
 				out.write((s + "\n").getBytes());
@@ -273,10 +269,8 @@ public class Utils {
 		}
 	}
 
-    public static void writeObject(OutputStream out, byte command, Object obj) {
+    public static void writeObject(OutputStream out, Object obj) {
     	try {
-			if (command != NONE)
-				out.write(command);
     		ObjectOutputStream objStream = new ObjectOutputStream(out);
     		objStream.writeObject(obj);
     		objStream.flush();
@@ -285,28 +279,22 @@ public class Utils {
     	}				
     }
 
-    public static void writeByteArray(OutputStream out, byte command, byte... barg) {
-    	try {
-    		if (command != NONE)
-    			out.write(command);
-			out.write(barg);
-    		out.flush();
-    	} catch (IOException e) {
-			debug("Exception in writing byte array to " + out.toString() + ": " + e);
-    	}				
-    }
-    
-    
-    public static void writeCommand(OutputStream out, byte command) {
+    public static void writeCommand(OutputStream out, byte command, int jobID) {
     	try {
 			out.write(command);
+			out.write(Utils.intToByteArray(jobID));
     		out.flush();
     	} catch (IOException e) {
 			debug("Exception in writing command to " + out.toString() + ": " + e);
     	}				
     }
     
-    public static void writeInt(OutputStream out, byte command, int arg) {
-    	writeByteArray(out, command, Utils.intToByteArray(arg));
+    public static void writeInt(OutputStream out, int arg) {
+    	try {
+			out.write(Utils.intToByteArray(arg));
+    		out.flush();
+    	} catch (IOException e) {
+			debug("Exception in writing int to " + out.toString() + ": " + e);
+    	}			
     }
 }

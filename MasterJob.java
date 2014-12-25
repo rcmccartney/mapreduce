@@ -5,66 +5,86 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MasterJob<K extends Serializable, 
 					   IV extends Serializable,
 					   OV extends Serializable> {
 
-	protected Mapper<K, IV, OV> currentJob;
-	protected HashMap<K, OV> results;
-	protected HashMap<K, Integer> keyCounts; 
 	protected Master master;
+	protected Mapper<K, IV, OV> job;
+	protected int jobID;
+	protected int keysSent = 0;  // keeps track of number of workers who have sent keys
+	protected int shuffled = 0;  // keeps track of the workers who finished shuffle & sort
+	protected int finished = 0;  // keeps track of the workers who are completed with reduce
+	protected Map<K, OV> results;
+	protected Map<K, Integer> keyCounts; 
 	//Map b/w key and list of Worker Ids it came from
-	protected Map<K, List<Integer>> key_workers_map; 
-	protected int wCount = 0, wDones = 0; //to keep track of number of workers who have sent keys
-	protected int wShuffleCount = 0; //keeps track of # of workers who finished mapping
+	protected Map<K, List<Integer>> keyToWorkers; 
 	// Map b/w WorkerId (Integer) and List of Transfer Messages for this workerId 
 	// i.e List<<Key, AddressOfWorkerPeer>>
-	protected Map<Integer, List<Object[]>> worker_messages_map; 
+	protected Map<Integer, List<Object[]>> workerToKeyMessages; 
+	protected List<WorkerConnection> jobWorkers;
 	protected List<String> files;
+	protected Object queueLock = new Object(); 
+	protected static Object printLock = new Object();
 	
-	public MasterJob(Mapper<K, IV, OV> mr, Master master, List<String> files) {
+	public MasterJob(int jobID, Mapper<K, IV, OV> mr, Master master, List<String> files, 
+			Collection<WorkerConnection> currentCluster) {
+		this.jobID = jobID;
 		this.master = master;
-		currentJob = mr;
-		keyCounts = new HashMap<>();
-		key_workers_map = new HashMap<>();
-		worker_messages_map = new HashMap<>();
-		results = new HashMap<>();
+		this.job = mr;
 		this.files = files;
+		keyCounts = new ConcurrentHashMap<>();
+		keyToWorkers = new ConcurrentHashMap<>();
+		workerToKeyMessages = new ConcurrentHashMap<>();
+		results = new ConcurrentHashMap<>();
+		jobWorkers = new ArrayList<>(currentCluster);
+	}
+	
+    /**
+     * Asynchronously publish a byte message to all workers registered on this job
+     * 
+     * @param message byte message to be sent to all worker nodes
+     */
+	protected void writeAllWorkers(final byte message){
+    	synchronized(queueLock) {
+	    	for (final WorkerConnection wc : jobWorkers)
+	    		Utils.writeCommand(wc.out, message, jobID);				
+    	}
+    }
+
+    protected synchronized void remove(int workerID) {
+		// TODO
+	}
+	
+	protected synchronized void receiveKeyComplete() {
+		if (++keysSent == jobWorkers.size())
+			coordinateKeysOnWorkers();
 	}
 
-	public void storeKeyToWorker(K key, int workerID) {
-		//aggregate key_workers_map
-		if(key_workers_map.containsKey(key))
-			key_workers_map.get(key).add(workerID); // append worker ID its corresponding key mapping
-		else {
-			List<Integer> l = new ArrayList<>();
-			l.add(workerID);
-			key_workers_map.put(key, l);
-		}
+	protected synchronized void receiveKeyShuffle() {
+		if (++shuffled == jobWorkers.size())
+			writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
 	}
 	
-	public void aggregateKeyCounts(K key, int count) {
-		if (keyCounts.containsKey(key)) 
-			keyCounts.put(key, keyCounts.get(key)+count);
-		else
-			keyCounts.put(key, count);
+	protected synchronized void receiveJobDone() {
+		if (++finished == jobWorkers.size())
+			printResults();
 	}
+		
+	//////////////////////////////////////////////////////////
+	//
+	// This follows map at the workers to coordinate which 
+	// worker will work on what keys
+	//
+	/////////////////////////////////////////////////////////
 
 	@SuppressWarnings("unchecked")
-	public synchronized void receiveWorkerKey(InputStream in, int id) {
-		/*
-		byte[] bInt = new byte[4]; 
-		byte[] keyArr = new byte[barr.length-4]; //subtract last 4 for integer
-		System.arraycopy(barr, 0, keyArr, 0, barr.length-4);
-		System.arraycopy(barr, barr.length-4, bInt, 0, 4);
-		K key = currentJob.readBytes(keyArr);
-		aggregate(key, Utils.byteArrayToInt(bInt)); 
-		storeKeyToWorker(key, id);
-		*/
+	protected synchronized void receiveWorkerKey(InputStream in, int id) {
 		try {
 			ObjectInputStream objInStream = new ObjectInputStream(in);
 			Object[] o = (Object[]) objInStream.readObject();		
@@ -78,6 +98,72 @@ public class MasterJob<K extends Serializable,
 			e.printStackTrace();
 		}
 	}
+	
+	protected void aggregateKeyCounts(K key, int count) {
+		if (keyCounts.containsKey(key)) 
+			keyCounts.put(key, keyCounts.get(key)+count);
+		else
+			keyCounts.put(key, count);
+	}
+	
+	protected void storeKeyToWorker(K key, int workerID) {
+		if(keyToWorkers.containsKey(key))
+			keyToWorkers.get(key).add(workerID); // append worker ID its corresponding key mapping
+		else {
+			List<Integer> l = new ArrayList<>();
+			l.add(workerID);
+			keyToWorkers.put(key, l);
+		}
+	}
+	
+	protected void addTransferMessage(int workerID, Object[] transferMsg) {
+		if (workerToKeyMessages.containsKey(workerID)) 
+			workerToKeyMessages.get(workerID).add(transferMsg);
+		else {
+			List<Object[]> messages = new ArrayList<Object[]>();
+			messages.add(transferMsg);
+			workerToKeyMessages.put(workerID, messages);
+		}
+	}
+	
+	protected void coordinateKeysOnWorkers(){
+
+		int wIdx = 0;
+
+		for (K key : keyToWorkers.keySet()) {
+			// TODO use a heap for load balancing so worker with most keys gets his largest key to analyze, etc 
+			WorkerConnection receiver = jobWorkers.get(wIdx);
+			// message contains key, ipaddress and port to send 
+			Object[] transferMessage = new Object[] { key,  
+					receiver.clientSocket.getInetAddress().getHostAddress(),
+					receiver.workerPort }; 
+			for (Integer workerID : keyToWorkers.get(key))
+				if (receiver.id != workerID)
+					addTransferMessage(workerID, transferMessage);
+			// for now go around in a circle assigning keys
+			if (++wIdx == jobWorkers.size())
+				wIdx = 0;
+		} //workerToKeyMessages is now populated
+		
+		// if there were less keys than workers we need to make blank messages 
+		// for the workers assigned zero keys so they will not hang
+		for (WorkerConnection wc : jobWorkers)
+			if (!workerToKeyMessages.containsKey(wc.id)) 
+				workerToKeyMessages.put(wc.id, new ArrayList<Object[]>());
+
+		// notify each worker of their assigned keys
+		for (Map.Entry<Integer, List<Object[]>> entry : workerToKeyMessages.entrySet()) {
+			WorkerConnection wc = master.getWorker(entry.getKey());
+			Utils.writeCommand(wc.out, Utils.M2W_COORD_KEYS, jobID);
+			Utils.writeObject(wc.out, entry.getValue());
+		}
+	}
+	
+	//////////////////////////////////////////////////////////
+	//
+	// This follows reduce at the workers
+	//
+	/////////////////////////////////////////////////////////
 	
 	@SuppressWarnings("unchecked")
 	public void receiveWorkerResults(InputStream in) {
@@ -93,54 +179,14 @@ public class MasterJob<K extends Serializable,
 			e.printStackTrace();
 		}
 	}
-	
-	public synchronized void coordinateKeysOnWorkers(){
-		int numOfKs = key_workers_map.keySet().size();
-		int numOfWs = master.workerQueue.size();
-		int incr = 1;
-		if (numOfKs > numOfWs) {
-			incr = (numOfKs % numOfWs == 0) ? (numOfKs / numOfWs) : ((numOfKs / numOfWs)+1); 
-		}
-		int kIdx = 0, wQIdx = 0;// WorkerConnection currWoker = master.workerQueue.get(0); 
-		for (K key : key_workers_map.keySet()){
-			Object[] transferMessage = new Object[]{key,  //contains key, ipaddress and port to send 
-					master.workerQueue.get(wQIdx).clientSocket.getInetAddress().getHostAddress(),
-					master.workerIDToPort.get(master.workerQueue.get(wQIdx).id)}; 
-			for (Integer wId : key_workers_map.get(key)){
-				if (worker_messages_map.containsKey(wId)) {
-					worker_messages_map.get(wId).add(transferMessage);
-				} 
-				else {
-					List<Object[]> messages = new ArrayList<Object[]>();
-					messages.add(transferMessage);
-					worker_messages_map.put(wId, messages);
-				}
-			}
-			
-			if ((++kIdx) % incr == 0){
-				++wQIdx;
-			}
-		} //worker_messages_map populated
-		/*
-		 * for (WorkerConnection wc : master.workerQueue){
-			wc.writeWorker(Utils.M2W_COORD_KEYS);
-			if (worker_messages_map.get(wc.id) == null) 
-				worker_messages_map.put(wc.id, new ArrayList<Object[]>());
-			else 
-				wc.writeObjToWorker(worker_messages_map.get(wc.id));
-		}
-		 */
-		for (Map.Entry<Integer, List<Object[]>> entry : worker_messages_map.entrySet()) {
-			WorkerConnection wc = master.getWCwithId(entry.getKey());
-			Utils.writeObject(wc.out, Utils.M2W_COORD_KEYS, entry.getValue());
-		}
-	}
 
 	public void printResults() {
-		System.out.println("***Final Results***");
-		for (K key: results.keySet()) {
-			System.out.println("Key: " + key + " Value: " + results.get(key));
+		synchronized(printLock) {
+			System.out.println("***Final Results For Job " + jobID + "***");
+			for (K key: results.keySet()) {
+				System.out.println("Key: " + key + " Value: " + results.get(key));
+			}
+			System.out.print("> ");
 		}
-		System.out.print("> ");
 	}
 }

@@ -32,25 +32,23 @@ import javax.tools.ToolProvider;
 public class Master extends Thread {
 
 	//used to number the workers
-	private static int wkID = 0;
+	private static int wkIDcounter = 0;
+	private static int jobCounter = 0;
 	
 	protected int port = Utils.DEF_MASTER_PORT;
 	protected int clientPort = Utils.DEF_CLIENT_PORT;
-	protected MasterJob<?, ?, ?> mj;
 	protected ExecutorService exec;
 	protected ClientListener clientConn;
 	protected ServerSocket serverSocket;
 	protected boolean stopped;
-	protected int jobs;
 	protected List<WorkerConnection> workerQueue; 
 	protected Object queueLock = new Object();
-	// Hashtable is synchronized for multiple worker sends
-	// stores map from Worker to Port for W2W comms
-	protected Map<Integer, Integer> workerIDToPort;
 	// this is the file server portion of Master
 	protected Map<Integer, List<String>> IDtoFiles;
 	protected Map<String, Integer> filesToID;
-	
+	// maps jobIDs to the MasterJob working them
+	protected Map<Integer, MasterJob<?,?,?>> jobs;
+
 	/**
 	 * 
 	 * @param args use -port X to change the server socket port to X
@@ -60,11 +58,10 @@ public class Master extends Thread {
 		if (args.length > 0)
 			parseArgs(args);
 		stopped = false;
-		jobs = 0;
 		workerQueue = new ArrayList<>();
 		filesToID = new ConcurrentHashMap<>();
 		IDtoFiles = new ConcurrentHashMap<>();
-		workerIDToPort = new ConcurrentHashMap<>();
+		jobs = new ConcurrentHashMap<>();
 		serverSocket = new ServerSocket(port);
 		exec = Executors.newCachedThreadPool();
 		// listen for Client connection sending a file
@@ -73,17 +70,8 @@ public class Master extends Thread {
 		clientConn.start();
 	}
 	
-	/**
-	 * Use this method as thread-safe access into stopped 
-	 * 
-	 * @return boolean if this socket is stoppped or not 
-	 */
-    protected synchronized boolean isStopped() {
-        return stopped;
-    }
-    
     /**
-     * Asynchronously publish a byte message to all workers in the cluster
+     * Asynchronously publish a byte message to all workers 
      * 
      * @param message byte message to be sent to all worker nodes
      */
@@ -92,11 +80,24 @@ public class Master extends Thread {
 	    	for (final WorkerConnection wc : workerQueue) {
 	    		exec.execute(new Runnable() {
 	    			public void run() {
-	    				Utils.writeCommand(wc.out, message);				
+	    				Utils.writeCommand(wc.out, message, Utils.NONE);				
 	    			}
 	    		});
 	    	}
     	}
+    }
+    
+    public int getJobs() {
+    	return jobs.size();
+    }
+	
+	/**
+	 * Use this method as thread-safe access into stopped 
+	 * 
+	 * @return boolean if this socket is stoppped or not 
+	 */
+    protected synchronized boolean isStopped() {
+        return stopped;
     }
     
     /**
@@ -110,9 +111,9 @@ public class Master extends Thread {
 		try {
 			Path myFile = Paths.get(filename);
 			byte[] byteArrOfFile = Files.readAllBytes(myFile);
-			WorkerConnection wk = this.getWCwithId(Integer.parseInt(workerID));
+			WorkerConnection wk = this.getWorker(Integer.parseInt(workerID));
 			if (wk != null) {
-				wk.sendFile(Utils.M2W_FILE, myFile.getFileName().toString(), byteArrOfFile);
+				wk.sendFile(Utils.M2W_FILE, Utils.NONE, myFile.getFileName().toString(), byteArrOfFile);
 				System.out.printf("%s sent to Worker %s%n", filename, workerID);
 			}
 			else 
@@ -125,70 +126,64 @@ public class Master extends Thread {
 		}
     }
     
+    ///////////////////////////////////
+    //
+    // These methods are job-independent
+    //
+    ///////////////////////////////////
     
-    protected void receiveWorkerPort(InputStream in) {
-		workerIDToPort.put(wkID, Utils.readInt(in));
-    }
-    
-    protected void receiveWorkerFiles(InputStream in) {
+    protected void receiveWorkerFiles(int wkID, InputStream in) {
 		List<String> wFiles = Utils.readFilenames(in);
-		if (wFiles != null && wFiles.size() > 0)
-			this.addFiles(wkID, wFiles);
+		if (wFiles != null && wFiles.size() > 0) {
+			IDtoFiles.put(wkID, wFiles);
+			for(String file : wFiles) 
+				filesToID.put(file, wkID);
+		}
 	}
     
+    ///////////////////////////////////
+    //
+    // These methods are job-dependent
+    //
+    ///////////////////////////////////
+	
+    protected void receiveWorkerKey(int wkID, InputStream in, OutputStream out, int jobID) throws IOException {
+		// Worker will send the JobID this refers to
+    	jobs.get(jobID).receiveWorkerKey(in, wkID);
+		out.write(Utils.ACK);  // worker waits for Ack before sending another
+    }
     
-    protected void receive(InputStream in, OutputStream out, int wkID, int command) {
-		
-		switch(command) {
-		case Utils.W2M_WP2P_PORT:
-			workerIDToPort.put(wkID, Utils.readInt(in));
-			break;
-		case Utils.M2W_REQ_LIST_OKAY:
-			List<String> wFiles = Utils.readFilenames(in);
-			if (wFiles != null && wFiles.size() > 0)
-				this.addFiles(wkID, wFiles);
-			break;
-		case Utils.W2M_KEY:
-			mj.receiveWorkerKey(in, wkID);
-			Utils.writeCommand(out, Utils.ACK);  // worker waits for Ack before sending another
-			break;
-		case Utils.W2M_KEY_COMPLETE:
-			//TODO: change wCount to compare with current actual # of workers on this job 
-			//		with a valid timeout
-			mj.wCount++;
-			if (mj.wCount == workerQueue.size()) // master now has all the keys from the workers
-				mj.coordinateKeysOnWorkers();
-			break;
-		case Utils.W2M_KEYSHUFFLED:
-			mj.wShuffleCount++;
-			if(mj.wShuffleCount == workerQueue.size()) {
-				System.err.println("...Shuffle & sort completed: starting reduction");
-				writeAllWorkers(Utils.M2W_BEGIN_REDUCE);
-			}
-			break;
-		case Utils.W2M_RESULTS:
-			mj.receiveWorkerResults(in);
-			Utils.writeCommand(out, Utils.ACK);
-			break;
-		case Utils.W2M_JOBDONE:
-			mj.wDones++;
-			if (mj.wDones == workerQueue.size())
-				mj.printResults();
-			break;
-		case Utils.ACK:  //worker has awknowledged receiving MR job, need to send his files
-			ArrayList<String> contains = new ArrayList<>();
-			for(String file: mj.files) 
-				if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
-					contains.add(file);
-			String[] files = new String[contains.size()];
-			files = contains.toArray(files);
-			Utils.writeFilenames(out, Utils.NONE, files);
-			break;
-		default:
-			System.err.println("Invalid command received on WorkerConnection " + wkID + ": " + command);
-			break;
-		}
-	} 
+    protected void receiveKeyComplete(InputStream in, int jobID) {
+		// Worker will send the JobID this refers to
+		jobs.get(jobID).receiveKeyComplete();
+    }
+    
+    protected void receiveKeyShuffle(InputStream in, int jobID) {
+    	// Worker will send the JobID this refers to
+		jobs.get(jobID).receiveKeyShuffle();
+    }
+    
+    protected void receiveJobDone(InputStream in, int jobID) {
+    	// Worker will send the JobID this refers to
+		jobs.get(jobID).receiveJobDone();
+    }
+    
+    protected void receiveResults(InputStream in, OutputStream out, int jobID) throws IOException {
+    	// Worker will send the JobID this refers to
+    	jobs.get(jobID).receiveWorkerResults(in);
+    	out.write(Utils.ACK);  // worker waits for Ack before sending another
+    }
+    
+    protected void receiveAck(int wkID, InputStream in, OutputStream out, int jobID) {
+    	//worker has awknowledged receiving MR job, need to send his files
+		ArrayList<String> contains = new ArrayList<>();
+		for(String file: jobs.get(jobID).files)  //first thing sent is jobID 
+			if (filesToID.containsKey(file) && filesToID.get(file) == wkID)
+				contains.add(file);
+		String[] files = new String[contains.size()];
+		files = contains.toArray(files);
+		Utils.writeFilenames(out, files);  //worker is waiting, no need to send jobID
+    }
      
     /**
      * This method sends the compiled MR job to the worker nodes
@@ -196,56 +191,51 @@ public class Master extends Thread {
      * need to make sure that files are in the right place and in
      * the classpath before compiling
      * 
-     * TODO - multiple jobs in a queue using wait/notify
-     * 
      * @param filename String filename to compile
      * @param filesToUse the files we want the worker nodes to use during mapping. If empty
      * 		  workers will use all the files in their local directory
      * @param local boolean on whether this file was copied from an external client
      * 		  or loaded from the command line locally
      */
-	public void setMRJob(String filename, List<String> filesToUse, boolean local){
+	public synchronized void receiveMRJob(String filename, List<String> filesToUse, boolean local){
 
 		//if filesToUSe is empty then use all files there
 		try {
-			if (jobs == 0) {
-				File f1 = null, f2 = null;
-				// if deleteAfter is false then this file is local, need to copy it
-				// to our working directory
-				if (local){
-					f1 = new File(filename);
-					f2 = new File(f1.getName());
-					Utils.copyFile(f1, f2);
-				}
-				else //this file came from an external client 
-					f2 = new File(filename);
-				// compile the file and load it into a mapper class
-				String className = compile(f2.getName());
-				Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
-				Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
-				// mj gets the class information generically from Mapper
-				mj = new MasterJob<>(mr, this, filesToUse);
-				// load the bytes of the compiled class and send it across the sockets to all workers
-				final Path myFile = Paths.get(className + ".class");
-				final byte[] byteArrOfFile = Files.readAllBytes(myFile);
-				// TODO change master classpath so client can run locally w/o deleting files
-				//Files.delete(Paths.get(className + ".class"));
-				//Files.delete(Paths.get(f2.getName()));
-				synchronized (queueLock) {
-					for (final WorkerConnection wc : workerQueue) {
-						exec.execute(new Runnable() {
-							public void run() {
-								if (!wc.isStopped())
-									wc.sendFile(Utils.M2W_MR_UPLOAD, myFile.getFileName().toString(), byteArrOfFile);		
+			File f1 = null, f2 = null;
+			// if deleteAfter is false then this file is local, need to copy it
+			// to our working directory
+			if (local){
+				f1 = new File(filename);
+				f2 = new File(f1.getName());
+				Utils.copyFile(f1, f2);
+			}
+			else //this file came from an external client 
+				f2 = new File(filename);
+			// compile the file and load it into a mapper class
+			String className = compile(f2.getName());
+			Class<?> myClass = ClassLoader.getSystemClassLoader().loadClass(className); 
+			Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
+			// mj gets the class information generically from Mapper
+			final int currJob = ++jobCounter;
+			jobs.put(currJob, new MasterJob<>(currJob, mr, this, filesToUse, workerQueue));
+			// load the bytes of the compiled class and send it across the sockets to all workers
+			final Path myFile = Paths.get(className + ".class");
+			final byte[] byteArrOfFile = Files.readAllBytes(myFile);
+			// TODO change master classpath so client can run locally w/o deleting files
+			//Files.delete(Paths.get(className + ".class"));
+			//Files.delete(Paths.get(f2.getName()));
+			synchronized (queueLock) {
+				for (final WorkerConnection wc : workerQueue) {
+					exec.execute(new Runnable() {
+						public void run() {
+							if (!wc.isStopped()) {
+								wc.sendFile(Utils.M2W_MR_UPLOAD, currJob, myFile.getFileName().toString(), byteArrOfFile);
 							}
-						});
-					}
+						}
+					});
 				}
-				System.out.println("...Finished sending MR job to worker nodes");
 			}
-			else {
-				//TODO >0 jobs
-			}
+			System.out.println("Finished sending MR job to worker nodes");
 		} catch (IOException e) { 
 			e.printStackTrace();
 		} catch (ClassNotFoundException e) {
@@ -272,7 +262,7 @@ public class Master extends Thread {
 			if (compiler == null)  // needs to be a JDK java.exe to have a compiler attached
 				throw new RuntimeException("Error: no compiler set for MR file");
 			int compilationResult = compiler.run(null, null, null, filename);  
-			System.out.println("..." + filename + " compilation " + (compilationResult==0?"successful":"failed"));
+			System.out.println(filename + " compilation " + (compilationResult==0?"successful":"failed"));
 			return filename.split("\\.")[0];  // class name is before ".java"
 		} catch (Exception e) {
 			System.err.println("Exception loading or compiling the File: " + e);
@@ -289,7 +279,7 @@ public class Master extends Thread {
 	 * @param id int that you want to convert to its owning Worker
 	 * @return WorkerConnection that has this unique ID
 	 */
-	public WorkerConnection getWCwithId(int id){
+	public WorkerConnection getWorker(int id){
 		// lock queue when iterating
 		synchronized(queueLock) {
 			for (WorkerConnection wc : workerQueue)
@@ -298,16 +288,7 @@ public class Master extends Thread {
 		}
 		return null;
 	}
-    
-	/**
-	 * Helper method for multi-threaded access to jobs
-	 * 
-	 * @return number of jobs
-	 */
-    protected synchronized int getJobs() {
-    	return jobs;
-    }
-    
+        
     public void stopServer() {
         // need to synchronize before touching stopped, a multi-threaded variable
     	synchronized(this) {
@@ -352,6 +333,8 @@ public class Master extends Thread {
 		for(String file : IDtoFiles.get(workerID))
 			filesToID.remove(file);
 		IDtoFiles.remove(workerID);
+		for(MasterJob<?,?,?> mj : jobs.values())
+			mj.remove(workerID);
 		synchronized(queueLock) {
 			Iterator<WorkerConnection> it = workerQueue.iterator();
 			while (it.hasNext()) {
@@ -364,18 +347,11 @@ public class Master extends Thread {
 		}
 	}
 	
-	//TODO better synchronization instead of hastable using concurrent Hashmap?
-	public void addFiles(Integer workerID, List<String> files) {
-		IDtoFiles.put(workerID, files);
-		for(String file : files) 
-			filesToID.put(file, workerID);
-	}
-	
 	public void run()	{
 		while(!isStopped()) {
 			try {
 				Socket client = this.serverSocket.accept();
-				WorkerConnection connection = new WorkerConnection(this, client, ++wkID);
+				WorkerConnection connection = new WorkerConnection(this, client, ++wkIDcounter);
 				connection.setDaemon(true);  // this will cause exit upon user 'quit'
 				connection.start();
 				synchronized (queueLock) {  // make this synchronized to prevent modification while iterating
@@ -393,8 +369,6 @@ public class Master extends Thread {
         System.out.println("Master server stopped") ;
 	}
 	
-
-		
 	public static void main(String[] args) throws IOException {
 		Master m = new Master(args);
 		m.start();

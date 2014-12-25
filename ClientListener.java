@@ -45,10 +45,10 @@ public class ClientListener extends Thread {
 				in = client.getInputStream();
 				out = client.getOutputStream();
 				out.write(++connections);  //client waits for an ID
-				MRFileName = Utils.readFile(in, "");  // receive the MR java file
+				MRFileName = Utils.receiveFile(in, "");  // receive the MR java file
 				out.write(Utils.ACK);  // notify client you received it
 				List<String> filesToUse = Utils.readFilenames(in);  // receive files to operate on
-				master.setMRJob(MRFileName, filesToUse, false);
+				master.receiveMRJob(MRFileName, filesToUse, false);
 			} catch (IOException e) {
 				System.err.println("Error while accepting client connections: " + e);
 			}

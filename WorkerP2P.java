@@ -16,14 +16,18 @@ public class WorkerP2P extends Thread {
  
 	protected ServerSocket workerServerSocket;
 	protected Worker worker;
-    protected boolean stopRun;
+    protected boolean stopped;
     
     public WorkerP2P(int port, Worker worker) throws IOException {
-    	this.stopRun = false;
+    	this.stopped = false;
     	this.workerServerSocket = new ServerSocket(port);
     	this.worker = worker;
     	this.setDaemon(true);
     	this.start();
+    }
+    
+    protected synchronized boolean isStopped() {
+    	return stopped;
     }
  
     /**
@@ -32,12 +36,13 @@ public class WorkerP2P extends Thread {
 	public void run(){
 		System.out.println("WorkerP2P Listener info: " + workerServerSocket);
 		try {
-			while(!stopRun) {
+			while(!isStopped()) {
 				Socket p2pSocket = workerServerSocket.accept();
+				int jobID = Utils.readInt(p2pSocket.getInputStream());
 				Object[] objArr = (Object[]) 
 						new ObjectInputStream(p2pSocket.getInputStream()).readObject();
-				worker.currentJob.receiveKV(objArr[0], objArr[1]);
-				System.out.println("Received <key,List<V>> from " + p2pSocket);
+				worker.jobs.get(jobID).receiveKV(objArr[0], objArr[1]);
+				System.out.println("Received Job " + jobID + " <key,List<V>> from " + p2pSocket);
 			}
 		} catch (IOException | ClassNotFoundException e) {
 			if (isStopped()) // we intended to stop the server
@@ -54,37 +59,25 @@ public class WorkerP2P extends Thread {
 	 * @param peerAddress
 	 * @param port
 	 */
-	public <K,V> void send(final K key, final List<V> values, final String peerAddress, final int port){
+	public <K,V> void send(K key, List<V> values, int jobID, String peerAddress, int port){
 		try {
 			Socket socket = new Socket(peerAddress, port);
+			Utils.writeInt(socket.getOutputStream(), jobID);
 			new ObjectOutputStream(socket.getOutputStream()).writeObject(new Object[]{key, values});
 			socket.close();
-			System.out.println("Sent <" + key + ",List<V>> to " + peerAddress + ":" + port);
+			System.out.println("Job " + jobID + ": Sent <" + key + ",List<V>> to " + peerAddress + ":" + port);
 		} catch (IOException e) {
 			System.err.println("Error sending K,V pair between workers: " + e);
 		} 
-	}
-	
-	// access the boolean in a synchronized manner
-	protected synchronized boolean isStopped() {
-		return stopRun;
 	}
 	
 	/**
 	 * Close the Listener socket 
 	 */
 	public synchronized void closeConnection(){
-		stopRun = true;
+		stopped = true;
 		try {
 			workerServerSocket.close();
-		} catch (IOException e) {
-			System.out.println("IOException in closing WorkerP2P connection: " + e);
-		}
-	}
-	
-	// each worker is on a unique port, can use this for equality testing
-	// but should change this to be more scalable
-	public boolean equals(String peerAddress, Integer peerPort) {
-		return workerServerSocket.getLocalPort() == peerPort;
-	}
+		} catch (IOException e) {}  //ignore exceptions since you are closing
+	}	
 }
