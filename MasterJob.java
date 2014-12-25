@@ -58,7 +58,7 @@ public class MasterJob<K extends Serializable,
     }
 
     protected synchronized void remove(int workerID) {
-		// TODO
+		// TODO remove a worker while a job is in progress
 	}
 	
 	protected synchronized void receiveKeyComplete() {
@@ -188,5 +188,6 @@ public class MasterJob<K extends Serializable,
 			}
 			System.out.print("> ");
 		}
+		master.jobComplete(this.jobID);
 	}
 }

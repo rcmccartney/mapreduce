@@ -50,8 +50,8 @@ public class ClientListener extends Thread {
 				out.write(Utils.ACK);  // notify client you received it
 				List<String> filesToUse = Utils.readFilenames(in);  // receive files to operate on
 				master.receiveMRJob(MRFileName, filesToUse, false);
-			} catch (IOException e) {
-				System.err.println("Error while accepting client connections: " + e);
+			} catch (Exception e) {
+				System.err.println("Exception while accepting client connection: " + e);
 			}
 		}
 	}

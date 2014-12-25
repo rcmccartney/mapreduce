@@ -207,53 +207,43 @@ public class Master extends Thread {
      * @param local boolean on whether this file was copied from an external client
      * 		  or loaded from the command line locally
      */
-	public synchronized void receiveMRJob(String filename, List<String> filesToUse, boolean local){
+	public synchronized void receiveMRJob(String filename, List<String> filesToUse, boolean local) throws Exception {
 
 		//if filesToUSe is empty then use all files there
-		try {
-			File f1 = null, f2 = null;
-			// if this file is local need to copy it to our working directory
-			if (local) {
-				f1 = new File(filename);
-				f2 = new File(basePath + File.separator + filename);
-				Utils.copyFile(f1, f2);
-			}
-			else //this file came from an external client 
-				f2 = new File(basePath + File.separator + filename);
-			// compile the file and load it into a mapper class
-			String className = compile(filename);
-			Class<?> myClass = myClassPathLoader.loadClass(className); 
-			Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
-			// mj gets the class information generically from Mapper
-			final int currJob = ++jobCounter;
-			jobs.put(currJob, new MasterJob<>(currJob, mr, this, filesToUse, workerQueue));
-			// load the bytes of the compiled class and send it across the sockets to all workers
-			final Path myFile = Paths.get(basePath + File.separator + className + ".class");
-			final byte[] byteArrOfFile = Files.readAllBytes(myFile);
-			// clean up the area 
-			Files.delete(myFile);
-			Files.delete(Paths.get(basePath + File.separator + f2.getName()));
-			synchronized (queueLock) {
-				for (final WorkerConnection wc : workerQueue) {
-					exec.execute(new Runnable() {
-						public void run() {
-							if (!wc.isStopped()) {
-								wc.sendFile(Utils.M2W_MR_UPLOAD, currJob, myFile.getFileName().toString(), byteArrOfFile);
-							}
-						}
-					});
-				}
-			}
-			System.out.println("Finished sending MR job to worker nodes");
-		} catch (IOException e) { 
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-		} catch (InstantiationException e) {
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
+		File f1 = null, f2 = null;
+		// if this file is local need to copy it to our working directory
+		if (local) {
+			f1 = new File(filename);
+			f2 = new File(basePath + File.separator + filename);
+			Utils.copyFile(f1, f2);
 		}
+		else //this file came from an external client 
+			f2 = new File(basePath + File.separator + filename);
+		// compile the file and load it into a mapper class
+		String className = compile(filename);
+		Class<?> myClass = myClassPathLoader.loadClass(className); 
+		Mapper<?, ?, ?> mr = (Mapper<?, ?, ?>) myClass.newInstance();
+		// mj gets the class information generically from Mapper
+		final int currJob = ++jobCounter;
+		jobs.put(currJob, new MasterJob<>(currJob, mr, this, filesToUse, workerQueue));
+		// load the bytes of the compiled class and send it across the sockets to all workers
+		final Path myFile = Paths.get(basePath + File.separator + className + ".class");
+		final byte[] byteArrOfFile = Files.readAllBytes(myFile);
+		// clean up the area 
+		Files.delete(myFile);
+		Files.delete(Paths.get(basePath + File.separator + f2.getName()));
+		synchronized (queueLock) {
+			for (final WorkerConnection wc : workerQueue) {
+				exec.execute(new Runnable() {
+					public void run() {
+						if (!wc.isStopped()) {
+							wc.sendFile(Utils.M2W_MR_UPLOAD, currJob, myFile.getFileName().toString(), byteArrOfFile);
+						}
+					}
+				});
+			}
+		}
+		System.out.println("Finished sending MR job to worker nodes");
 	}
 	
 	/**
@@ -316,27 +306,9 @@ public class Master extends Thread {
         }
     }
 	
-	/**
-	 * This method parses any inputs for the port to use, and stores it into
-	 * the instance variable prior to the constructor
-	 * 
-	 * @param args passed in on command line
-	 */
-	protected void parseArgs(String args[]) {
-		
-		for (int i = 0; i < args.length; i ++) {	
-			if (args[i].equals("-wp")) 
-				port = new Integer(args[++i]).intValue();
-			else if (args[i].equals("-cp")) 
-				clientPort = new Integer(args[++i]).intValue();
-			else {
-				System.out.println("Correct usage: java Master [-wp <port>] [-cp <port>]");
-				System.out.println("\t-wp: override default worker port 40001 to <port>.");
-				System.out.println("\t-cp: override default client port 40000 to <port>.");
-				System.exit(1);
-			}
-		}
-	}
+    public void jobComplete(int jobID) {
+    	jobs.remove(jobID);
+    }
 	
 	public void remove(int workerID) {
 		for(String file : IDtoFiles.get(workerID))
@@ -376,6 +348,28 @@ public class Master extends Thread {
 			}
 		}
         System.out.println("Master server stopped") ;
+	}
+	
+	/**
+	 * This method parses any inputs for the port to use, and stores it into
+	 * the instance variable prior to the constructor
+	 * 
+	 * @param args passed in on command line
+	 */
+	protected void parseArgs(String args[]) {
+		
+		for (int i = 0; i < args.length; i ++) {	
+			if (args[i].equals("-wp")) 
+				port = new Integer(args[++i]).intValue();
+			else if (args[i].equals("-cp")) 
+				clientPort = new Integer(args[++i]).intValue();
+			else {
+				System.out.println("Correct usage: java Master [-wp <port>] [-cp <port>]");
+				System.out.println("\t-wp: override default worker port 40001 to <port>.");
+				System.out.println("\t-cp: override default client port 40000 to <port>.");
+				System.exit(1);
+			}
+		}
 	}
 	
 	public static void main(String[] args) throws IOException {
